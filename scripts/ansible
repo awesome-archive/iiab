@@ -1,104 +1,146 @@
 #!/bin/bash -e
+# FWIW "-e" tries to exit right away on error:
+# https://tldp.org/LDP/abs/html/options.html
+# https://stackoverflow.com/questions/9952177/whats-the-meaning-of-the-parameter-e-for-bash-shell-command-line/9952249
 
-CURR_VER="undefined"    # Ansible version you currently have installed
-GOOD_VER="2.7.7"    # For XO laptops (pip install) & CentOS (yum install rpm)
-# On other OS's we attempt the latest from PPA, which might be more recent
+# PLZ SEE http://FAQ.IIAB.IO > "What is Ansible and what version should I use?"
+#         https://github.com/iiab/iiab/tree/master/scripts/ansible.md
+#         https://github.com/iiab/iiab/wiki/IIAB-Contributors-Guide#ansible
+
+APT_PATH=/usr/bin     # Avoids problematic /usr/local/bin/apt on Linux Mint
+CURR_VER=undefined    # Ansible version you currently have installed
+GOOD_VER=2.10.8       # Orig for 'yum install [rpm]' & XO laptops (pip install)
+
+# We install the latest 'ansible-base' from PPA, using an OS 'CODENAME' below:
+# https://launchpad.net/~ansible/+archive/ubuntu/ansible
+
+# 'lsb_release -sc' gives Mint 20 codename 'ulyana' etc: (TOO FINE-GRAINED)
+if grep -q buster /etc/os-release /etc/debian_version; then
+    CODENAME=bionic    # Debian 10, RaspiOS 10 & Buster-like distros
+else
+    CODENAME=focal     # Debian 11+, RaspiOS 11+, Ubuntu 20.04+, Mint 20+ (ETC)
+fi
+
+# 'ansible-base' being renamed 'ansible-code' early in 2021. RELEASE LINK REFS:
+# http://ppa.launchpad.net/ansible/ansible/ubuntu/pool/main/a/ansible-base/
+# https://launchpad.net/~ansible/+archive/ubuntu/ansible-2.10
+# https://github.com/ansible/ansible/commits/stable-2.10/changelogs/CHANGELOG-v2.10.rst
+# https://github.com/ansible/ansible/blob/devel/docs/docsite/rst/roadmap/ROADMAP_2_11.rst
+# https://www.ansible.com/blog/ansible-3.0.0-qa
+# https://github.com/ansible/ansible/releases
+# https://releases.ansible.com/ansible-base/
+# https://releases.ansible.com/ansible-core/
+
+# FYI .travis.yml installs ansible-base in a slightly different way (PR #2689).
+
+# IIAB implementers might instead consider these 4 GENERAL TECHNIQUES below
+# ("in an emergency!") e.g. if apt fails & you need a newer/older Ansible:
+
+# TEMPORARILY USE pip3 to install the latest ansible-core as listed at
+# https://pypi.org/project/ansible-core/ (REMOVE W/ "pip3 uninstall ansible-core")
+#pip3 install ansible-core    # Then start a new shell, so /usr/local/bin works
+#apt install python3-pymysql python3-psycopg2 python3-passlib python3-pip python3-setuptools python3-packaging python3-venv virtualenv
+#ansible-galaxy collection install -r collections.yml
+
+# TEMPORARILY USE ansible-base 2.10.8 (REMOVE W/ "pip3 uninstall ansible-base")
+#pip3 install ansible-base==2.10.8   # Start new shell, so /usr/local/bin works
+
+# TEMPORARILY USE ANSIBLE 2.9.20 (REMOVE IT WITH "pip uninstall ansible")
+#apt install python-pip
+#pip install ansible==2.9.20
+
+# TEMPORARILY USE ANSIBLE 2.4.2 DUE TO 2.4.3 MEMORY BUG. Details: iiab/iiab#669
+#echo "Install http://download.iiab.io/packages/ansible_2.4.2.0-1ppa~xenial_all.deb"
+#cd /tmp
+#wget http://download.iiab.io/packages/ansible_2.4.2.0-1ppa~xenial_all.deb
+#apt -y --allow-downgrades install ./ansible_2.4.2.0-1ppa~xenial_all.deb
 
 export DEBIAN_FRONTEND=noninteractive
+# Why 'noninteractive' appears needed:
+# https://github.com/iiab/iiab/issues/564#issuecomment-347264985
 
-echo -e "\n\nYOU ARE RUNNING: /opt/iiab/iiab/scripts/ansible (TO INSTALL ANSIBLE)"
-echo -e 'Alternative:     /opt/iiab/iiab/scripts/ansible-2.6.x ("Slow Food")\n'
+echo -e "\n\nYOU ARE RUNNING: /opt/iiab/iiab/scripts/ansible (TO INSTALL ANSIBLE)\n"
+#echo -e 'Alternative:     /opt/iiab/iiab/scripts/ansible-2.9.x ("Slow Food")\n'
 
 echo -e "RECOMMENDED PREREQUISITES:"
 echo -e "(1) Verify you're online"
-echo -e "(2) Remove all prior versions of Ansible using"
-echo -e "    'apt purge ansible' and/or 'pip uninstall ansible'"
-echo -e "(3) Remove all lines containing 'ansible' from"
+echo -e "(2) Remove all prior versions of Ansible using..."
+echo -e "    'apt purge ansible-base'  and/or  'pip3 uninstall ansible-base'  and/or"
+echo -e "    'apt purge ansible'       and/or  'pip uninstall ansible'"
+echo -e "(3) Remove all lines containing 'ansible' from..."
 echo -e "    /etc/apt/sources.list and /etc/apt/sources.list.d/*\n"
 
-echo -e "COMPLETE INSTALL INSTRUCTIONS:"
+echo -e "IIAB INSTALL INSTRUCTIONS: (OLDER, MANUAL APPROACH)"
 echo -e "https://github.com/iiab/iiab/wiki/IIAB-Installation#do-everything-from-scratch\n"
 
-if [ $(command -v ansible-playbook) ]; then    # "command -v" is POSIX compliant; also catches built-in commands like "cd"
-    CURR_VER=`ansible --version | head -1 | awk '{print $2}'`    # To match iiab-install.  Was: CURR_VER=`ansible --version | head -n 1 | cut -f 2 -d " "`
+if [ $(command -v ansible) ]; then    # "command -v" is POSIX compliant; also catches built-in commands like "cd"
+    CURR_VER=$(ansible --version | head -1 | cut -f 2- -d " ")
+    # Above works with 'ansible [core 2.11.0rc2]' -- these old ways do not:
+    #CURR_VER=$(ansible --version | head -1 | awk '{print $2}')
+    #CURR_VER=$(ansible --version | head -1 | sed -e 's/.* //')
     echo -e "CURRENTLY INSTALLED ANSIBLE: $CURR_VER -- LET'S TRY TO UPGRADE IT!"
-    echo -e "(Internet-in-a-Box requests Ansible $GOOD_VER or higher)\n"
-    if [ -f /etc/centos-release ] || [ -f /etc/fedora-release ]; then
-        echo "Please use your system's package manager (or pip if nec) to update Ansible.\n"
-        exit 0
-    elif [ -f /etc/olpc-release ]; then
-        echo "Please use pip package manager to update Ansible.\n"
-        exit 0
-    fi
 else
     echo -e "ANSIBLE NOT FOUND ON THIS COMPUTER -- LET'S TRY TO INSTALL IT!"
-    echo -e "(Internet-in-a-Box requests Ansible $GOOD_VER or higher)\n"
 fi
+echo -e "(Internet-in-a-Box requests ansible-base $GOOD_VER or higher)\n"
 
-if [ -f /etc/olpc-release ]; then
-    yum -y install ca-certificates nss
-    yum -y install git bzip2 file findutils gzip hg svn sudo tar which unzip xz zip libselinux-python
-    yum -y install python-pip python-setuptools python-wheel patch
-    # Can above 3 lines be merged into 1 line?
-    pip install --upgrade pip setuptools wheel #EOL just do it
-    pip install ansible==$GOOD_VER --disable-pip-version-check
-elif [ -f /etc/centos-release ]; then
-    yum -y install ansible
-# 2018-09-07: the next 4 lines aren't needed according to https://docs.ansible.com/ansible/latest/installation_guide/intro_installation.html#latest-release-via-dnf-or-yum
-#    yum -y install ca-certificates nss epel-release
-#    yum -y install git bzip2 file findutils gzip hg svn sudo tar which unzip xz zip libselinux-python
-#    yum -y install python-pip python-setuptools python-wheel patch
-#    yum -y install https://releases.ansible.com/ansible/rpm/release/epel-7-x86_64/ansible-$GOOD_VER-1.el7.ans.noarch.rpm
-#elif [ -f /etc/fedora-release ]; then
-#    CURR_VER=`grep VERSION_ID /etc/*elease | cut -d= -f2`
-#    URL=https://github.com/jvonau/iiab/blob/ansible/vars/fedora-$CURR_VER.yml
-#    dnf -y install ansible git bzip2 file findutils gzip hg svn sudo tar which unzip xz zip libselinux-python
-#    dnf -y install python-pip python-setuptools python-wheel patch
-## Parens are optional, but greatly clarify :)
-#elif (grep -qi ubuntu /etc/lsb-release 2> /dev/null) || (grep -qi ubuntu /etc/os-release); then
-#    apt update
-#    #apt -y install python-pip python-setuptools python-wheel patch    # 2018-09-05: fails on @kananigit's Ubuntu 18.04/Server.  Fix @ https://github.com/iiab/iiab/pull/1091
-#    apt -y install software-properties-common    # adds command "apt-add-repository"
-#    apt-add-repository -y ppa:ansible/ansible    # adds correct line to correct file e.g. adds line "deb http://ppa.launchpad.net/ansible/ansible/ubuntu bionic main" to /etc/apt/sources.list.d/ansible-ubuntu-ansible-bionic.list
-## elif UBUNTU MUST REMAIN ABOVE (as Ubuntu ALSO contains /etc/debian_version, which would trigger the line just below)
-#elif [ -f /etc/debian_version ] || (grep -qi raspbian /etc/*elease) ; then
-#elif [ ! -f /etc/centos-release ] && [ ! -f /etc/fedora-release ] && [ ! -f /etc/olpc-release ]; then
-elif [ -f /etc/debian_version ]; then    # Includes Debian, Ubuntu & Raspbian
-
-    echo -e "\napt update; install dirmngr; PPA to /etc/apt/sources.list.d/iiab-ansible.list\n"
-    apt update
-    apt -y install dirmngr    # Raspbian needs.  Formerly: python-pip python-setuptools python-wheel patch
-    echo "deb http://ppa.launchpad.net/ansible/ansible/ubuntu xenial main" \
-         > /etc/apt/sources.list.d/iiab-ansible.list
-
-    echo -e '\nIF YOU FACE ERROR "signatures couldn'"'"'t be verified because the public key is not available" THEN REPEATEDLY RE-RUN "sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 93C4A3FD7BB9C367"\n'
-    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 93C4A3FD7BB9C367
-
-    echo -e "\napt update; apt install ansible\n"
-    apt update
-    apt -y --allow-downgrades install ansible
-    echo -e "\nSUCCESS: verify Ansible using 'ansible --version' and/or 'apt -a list ansible'\n\n"
-
-    # TEMPORARILY USE ANSIBLE 2.4.4 (REMOVE IT WITH "pip uninstall ansible")
-    #pip install ansible==2.4.4
-
-    # TEMPORARILY USE ANSIBLE 2.4.2 DUE TO 2.4.3 MEMORY BUG. DETAILS @ https://github.com/iiab/iiab/issues/669
-    #echo "Install http://download.iiab.io/packages/ansible_2.4.2.0-1ppa~xenial_all.deb"
-    #cd /tmp
-    #wget http://download.iiab.io/packages/ansible_2.4.2.0-1ppa~xenial_all.deb
-    #apt -y --allow-downgrades install ./ansible_2.4.2.0-1ppa~xenial_all.deb
-
-    echo -e 'PPA source "deb http://ppa.launchpad.net/ansible/ansible/ubuntu xenial main"'
-    echo -e "successfully saved to /etc/apt/sources.list.d/iiab-ansible.list\n"
-    
-    echo -e "IF *OTHER* ANSIBLE SOURCES APPEAR BELOW, PLEASE MANUALLY REMOVE THEM TO"
-    echo -e "ENSURE ANSIBLE UPDATES CLEANLY: (then re-run this script to be sure!)\n"
-    grep '^deb .*ansible' /etc/apt/sources.list /etc/apt/sources.list.d/*.list | grep -v '^/etc/apt/sources.list.d/iiab-ansible.list:' || true    # Override bash -e (instead of aborting at 1st error)
-else
-    echo -e "\nEXITING: Could not detect your OS (unsupported?)\n"
+# Code above designed to work on all Linux distributions, to preserve options,
+# in support of any volunteer(s) wanting to port IIAB to a new Linux/distro.
+if [ ! -f /etc/debian_version ]; then    # e.g. RaspiOS, Ubuntu, Mint & Debian
+    echo -e "\nEXITING: /etc/debian_version FILE NOT FOUND.  Linux OS support info here:"
+    echo -e "           https://github.com/iiab/iiab/wiki/IIAB-Platforms\n"
     exit 1
 fi
 
-# Needed?
+echo -e "\napt update; install dirmngr; PPA to /etc/apt/sources.list.d/iiab-ansible.list\n"
+$APT_PATH/apt update
+$APT_PATH/apt -y install dirmngr
+echo "deb http://ppa.launchpad.net/ansible/ansible/ubuntu $CODENAME main" \
+     > /etc/apt/sources.list.d/iiab-ansible.list
+# In future we might instead consider 'add-apt-repository ppa:ansible/ansible'
+# or 'apt-add-repository ppa:ansible/bionic/ansible' etc, e.g. for streamlined
+# removal using 'apt-add-repository -r' -- however that currently requires
+# 'apt install software-properties-common' which drags in a dozen packages we
+# might not want, e.g. unattended-upgrades, packagekit etc.
+
+# 2020-08-20: TEMP WORKAROUND (REVERT TO ANSIBLE 2.9.6) MITIGATING
+# iiab/iiab#2481 (Ansible 2.9.12 and 2.10.0's 666-TO-600 file permissions
+# problem).  This workaround installs 2.9.6-1ppa~disco onto RaspiOS, from
+# https://launchpad.net/~ansible/+archive/ubuntu/ansible
+#echo "deb http://ppa.launchpad.net/ansible/ansible/ubuntu disco main" \
+    #    > /etc/apt/sources.list.d/iiab-ansible.list
+
+echo -e '\nIF YOU FACE ERROR "signatures couldn'"'"'t be verified because the public key is not available" THEN REPEATEDLY RE-RUN "sudo apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 93C4A3FD7BB9C367"\n'
+apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 93C4A3FD7BB9C367
+echo -e 'PPA source "deb http://ppa.launchpad.net/ansible/ansible/ubuntu '$CODENAME' main"'
+echo -e "successfully saved to /etc/apt/sources.list.d/iiab-ansible.list\n"
+echo -e "IF *OTHER* ANSIBLE SOURCES APPEAR BELOW, PLEASE MANUALLY REMOVE THEM TO"
+echo -e 'ENSURE ANSIBLE UPDATES CLEANLY: (then re-run this script to be sure!)\n'
+grep '^deb .*ansible' /etc/apt/sources.list /etc/apt/sources.list.d/*.list | grep -v '^/etc/apt/sources.list.d/iiab-ansible.list:' || true    # Override bash -e (instead of aborting at 1st error)
+
+echo -e "\napt update; apt install ansible-base and python3 dependencies explained at:"
+echo -e "https://github.com/iiab/iiab/tree/master/scripts/ansible.md\n"
+$APT_PATH/apt update
+$APT_PATH/apt -y --allow-downgrades install ansible-base \
+              python3-pymysql python3-psycopg2 python3-passlib python3-pip \
+              python3-setuptools python3-packaging python3-venv virtualenv
+
+# (Re)running collection installs appears safe, with --force-with-deps to force
+# upgrade of collection and dependencies it pulls in.  Note Ansible may support
+# explicit upgrading of collections (--upgrade / -U flag) in version "2.11"
+# with PR ansible/ansible#73336.  See also IIAB PRs #2647 #2652 #2653 #2655.
+echo -e "\n\nIIAB requires these ~4 Ansible Collections: (we upgrade them here if possible!)\n"
+ansible-galaxy collection install --force-with-deps \
+               -r /opt/iiab/iiab/collections.yml \
+               -p /usr/share/ansible/collections
+# 2021-02-24: 'ansible-galaxy collection list' lists those installed. (#2659)
+# 2020-11-28: The ~3 Ansible Collections used by IIAB (~37MB) once lived here:
+#    /root/.ansible/collections/ansible_collections
+# But going forward they'll be stored herein:
+#    /usr/share/ansible/collections/ansible_collections
+
+echo -e "\n\nCreating/verifying directory /etc/ansible & installing /etc/ansible/hosts\n"
 mkdir -p /etc/ansible
 echo -e '[local]\nlocalhost\n' > /etc/ansible/hosts
+
+echo -e "SUCCESS: VERIFY ANSIBLE WITH 'ansible --version' & 'apt -a list ansible-base'\n\n"

@@ -3,6 +3,7 @@
     dansguardian_enabled: False
     squid_enabled: False
     wondershaper_enabled: False
+    hostapd_enabled: False
     iiab_network_mode: "Appliance"
   when: iiab_lan_iface == "none" or user_lan_iface == "none"
 
@@ -45,8 +46,8 @@
   set_fact:
     named_enabled: False
     dhcpd_enabled: False
-    dnsmasq_enabled: False
-    dhcp_service2: "dnsmasq disabled"
+    dnsmasq_enabled: True
+    dhcp_service2: "dnsmasq"
   when: dnsmasq_install and iiab_network_mode == "Appliance"
 
 - name: Add 'network' variable values (from computed_services.yml) to {{ iiab_ini_file }}
@@ -54,7 +55,7 @@
     dest: "{{ iiab_ini_file }}"
     section: network
     option: "{{ item.option }}"
-    value: "{{ item.value }}"
+    value: "{{ item.value | string }}"
   with_items:
   - option: dansguardian_enabled
     value: "{{ dansguardian_enabled }}"
@@ -74,3 +75,11 @@
     value: "{{ dnsmasq_enabled }}"
   - option: no_net_restart
     value: "{{ no_net_restart }}"
+  - option: hostapd_enabled
+    value: "{{ hostapd_enabled }}"
+  - option: host_ssid
+    value: "{{ host_ssid }}"
+  - option: host_wifi_mode
+    value: "{{ host_wifi_mode }}"
+  - option: host_channel
+    value: "{{ host_channel }}"

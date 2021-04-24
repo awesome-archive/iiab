@@ -1,9 +1,8 @@
 is_debuntu: True
 is_debian: True
 is_debian_9: True
+is_raspbian: True
 is_raspbian_9: True
-is_rpi: True
-rtc_id: ds3231
 
 # 2019-01-31: These apply if-only-if named_install and/or dhcpd_install are True
 # (This is quite rare now that vars/default_vars.yml sets dnsmasq_install: True)
@@ -14,7 +13,7 @@ dhcp_service: isc-dhcp-server
 proxy: squid
 proxy_user: proxy
 apache_service: apache2
-apache_config_dir: apache2/sites-available
+apache_conf_dir: apache2/sites-available
 apache_user: www-data
 apache_log_dir: /var/log/apache2
 smb_service: smbd
@@ -27,11 +26,6 @@ sshd_service: ssh
 php_version: 7.0
 postgresql_version: 9.6
 systemd_location: /lib/systemd/system
-# Upgrade Raspbian Stretch's Calibre 2.75.1: (via role/calibre/tasks/debs.yml,
-# with .deb's released about 5-10 days after Calibre's quasi-monthly releases)
-calibre_via_debs: True
-# roles/calibre/tasks/py-installer.yml FAILS on ARM as of 2018-05-10:
-calibre_via_python: False
 
 # minetest for rpi
 minetest_server_bin: /library/games/minetest/bin/minetestserver

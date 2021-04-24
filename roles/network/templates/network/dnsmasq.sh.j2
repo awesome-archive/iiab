@@ -1,0 +1,7 @@
+#!/bin/bash
+
+if [ "$IFACE" == "{{ iiab_lan_iface }}" ]; then
+    echo "Restarting dnsmasq in 5 seconds"
+    /bin/sleep 5 && /bin/systemctl --no-block restart dnsmasq.service
+    echo "Restarted dnsmasq"
+fi

@@ -1,0 +1,53 @@
+- name: "Set 'apache_install: True' and 'apache_enabled: True'"
+  set_fact:
+    apache_install: True
+    apache_enabled: True
+
+- name: APACHE - run 'httpd' role
+  include_role:
+    name: httpd
+
+
+- name: Unarchive {{ phpmyadmin_dl_url }} (7+ MB) to /opt (60+ MB)
+  unarchive:
+    remote_src: yes    # Overwrite even if "already exists on the target"
+    src: "{{ phpmyadmin_dl_url }}"    # e.g. https://files.phpmyadmin.net/phpMyAdmin/5.1.0/phpMyAdmin-5.1.0-all-languages.tar.xv
+    dest: /opt
+    owner: "{{ apache_user }}"    # www-data on debuntu
+    group: "{{ apache_user }}"
+    #timeout: "{{ download_timeout }}" # Use get_url if timeout (200s) required
+  when: internet_available
+
+- name: Symlink /opt/phpmyadmin -> {{ phpmyadmin_name }}
+  file:
+    src: "{{ phpmyadmin_name }}"
+    path: /opt/phpmyadmin
+    #owner: "{{ apache_user }}"    # Generally not used by Linux
+    #group: "{{ apache_user }}"    # Generally not used by Linux
+    state: link
+
+- name: Install /opt/phpmyadmin/config.inc.php owned by {{ apache_user }}:{{ apache_user }}, from template
+  template:
+    src: config.inc.php
+    dest: /opt/phpmyadmin/config.inc.php
+    owner: "{{ apache_user }}"
+    group: "{{ apache_user }}"
+
+- name: Install /etc/{{ apache_conf_dir }}/phpmyadmin.conf from template
+  template:
+    src: phpmyadmin.j2
+    dest: "/etc/{{ apache_conf_dir }}/phpmyadmin.conf"
+  #when: apache_installed is defined
+
+
+# RECORD phpMyAdmin AS INSTALLED
+
+- name: "Set 'phpmyadmin_installed: True'"
+  set_fact:
+    phpmyadmin_installed: True
+
+- name: "Add 'phpmyadmin_installed: True' to {{ iiab_state_file }}"
+  lineinfile:
+    path: "{{ iiab_state_file }}"    # /etc/iiab/iiab_state.yml
+    regexp: '^phpmyadmin_installed'
+    line: 'phpmyadmin_installed: True'

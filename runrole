@@ -1,11 +1,16 @@
 #!/bin/bash
 
-INVENTORY="ansible_hosts"
-PLAYBOOK="run-one-role.yml"
-#PLAYBOOK="iiab-stages.yml"
+DEFAULT_VARS_FILE=/opt/iiab/iiab/vars/default_vars.yml
+LOCAL_VARS_FILE=/etc/iiab/local_vars.yml
+IIAB_STATE_FILE=/etc/iiab/iiab_state.yml
+ROLE_VAR=""
+INSTALL=false
+ENABLED=false
+REINSTALL=false
 CWD=`pwd`
-
-export ANSIBLE_LOG_PATH="$CWD/iiab-debug.log"
+ARGS="--extra-vars {"    # bash forces {...} to '{...}' for Ansible, SEE BOTTOM
+INVENTORY=ansible_hosts
+PLAYBOOK=run-one-role.yml
 
 if [ ! -f $PLAYBOOK ]; then
     echo "Exiting: IIAB Playbook not found."
@@ -13,16 +18,111 @@ if [ ! -f $PLAYBOOK ]; then
     exit 1
 fi
 
-# Is the following stanza nec?
-if [ ! -f /etc/iiab/config_vars.yml ]; then
-    mkdir -p /etc/iiab
-    echo "{}" > /etc/iiab/config_vars.yml
-fi
-
-if [[ $# -eq 0 ]] ; then
-    echo " usage: ./runrole <name of role>"
-    echo " Can only take a single value."
+if [ $# -eq 0 ] || [ "$2" == "--reinstall" ] || [ "$3" == "--reinstall" ]; then
+    echo "Usage: ./runrole <name of role>"
+    echo "Usage: ./runrole --reinstall <name of role>"
+    echo
+    echo "Optional 2nd parameter is full PATH/FILENAME for logging."
+    echo "If omitted, <current directory>/iiab-debug.log is used."
     exit 0
 fi
 
-ansible-playbook -i $INVENTORY $PLAYBOOK --connection=local -e "role_to_run=$1"
+# 2020-08-05: yes /etc/iiab/iiab_state.yml is necessary, but we DON'T
+# want to encourage sloppy operators to delete/touch this file.
+#
+# (The iiab_state.yml file should always be created by ./iiab-install,
+# for IIAB's Ansible roles that then auto-populate this file.)
+#
+# FYI ./iiab-network and ./iiab-configure likewise warn operators (IN RED!)
+# if they try to run without the existence of /etc/iiab/iiab_state.yml :
+#
+# ERROR! vars file /etc/iiab/iiab_state.yml was not found
+#
+# Needed for Stages 1-3 if not installed yet
+#if [ ! -f $IIAB_STATE_FILE ]; then
+#    touch $IIAB_STATE_FILE
+#fi
+
+if [ "$1" == "--reinstall" ]; then
+    ARGS="$ARGS\"reinstall\":True," # Needs boolean not string so use JSON list
+    REINSTALL=true
+    shift
+fi
+
+ROLE_VAR=$1    # Ansible role name & var name sometimes differ :/
+if [ $1 == "calibre-web" ]; then 
+    ROLE_VAR=calibreweb
+elif [ $1 == "httpd" ]; then
+    ROLE_VAR=apache
+elif [ $1 == "osm-vector-maps" ]; then
+    ROLE_VAR=osm_vector_maps
+fi
+
+echo
+if $REINSTALL; then   # Add '_' so '--reinstall calibre' doesn't zap calibreweb
+    if grep -q "^${ROLE_VAR}_" $IIAB_STATE_FILE; then
+        echo -e "\e[1mThese line(s) in $IIAB_STATE_FILE are now being deleted:\e[0m\n"
+        grep "^${ROLE_VAR}_" $IIAB_STATE_FILE; echo
+        sed -i "/^${ROLE_VAR}_/d" $IIAB_STATE_FILE
+    else
+        echo -e "\e[1mERROR: $IIAB_STATE_FILE has no line(s) that begin with '${ROLE_VAR}_'\e[0m\n"
+        echo -e "Try again without the '--reinstall' flag?\n"
+        exit 1
+    fi
+else
+    if grep -q "^${ROLE_VAR}_" $IIAB_STATE_FILE; then
+        echo -e "\e[1mWARNING: $IIAB_STATE_FILE already has these line(s):\e[0m\n"
+        grep "^${ROLE_VAR}_" $IIAB_STATE_FILE; echo
+        echo -e "If you prefer to reinstall it, run: ./runrole --reinstall $1\n"
+
+        grep -q "^${ROLE_VAR}_enabled:\s\+[Tt]rue\b" $DEFAULT_VARS_FILE && ENABLED=true
+        grep -q "^${ROLE_VAR}_enabled:\s\+[Ff]alse\b" $LOCAL_VARS_FILE && ENABLED=false
+        grep -q "^${ROLE_VAR}_enabled:\s\+[Tt]rue\b" $LOCAL_VARS_FILE && ENABLED=true
+        if $ENABLED; then
+            echo -n "Or just continue, to try to enforce var '${ROLE_VAR}_enabled: True' ? [Y/n] "
+        else
+            echo -n "Or just continue, to try to enforce var '${ROLE_VAR}_enabled: False' ? [Y/n] "
+        fi
+        read ans < /dev/tty
+        echo
+        [ "$ans" = "n" ] || [ "$ans" = "N" ] &&
+            exit 1
+    fi
+fi
+
+grep -q "^${ROLE_VAR}_install:\s\+[Tt]rue\b" $DEFAULT_VARS_FILE && INSTALL=true
+grep -q "^${ROLE_VAR}_install:\s\+[Ff]alse\b" $LOCAL_VARS_FILE && INSTALL=false
+grep -q "^${ROLE_VAR}_install:\s\+[Tt]rue\b" $LOCAL_VARS_FILE && INSTALL=true
+if ! $INSTALL; then
+    echo -e "\e[1m'${ROLE_VAR}_install: True' MUST BE SET!\e[0m\n"
+    echo -e "Usually it's best to set variables in: $LOCAL_VARS_FILE\n"
+    echo -n "Just for now, force '${ROLE_VAR}_install: True' directly to Ansible? [Y/n] "
+    read ans < /dev/tty
+    echo
+    [ "$ans" = "n" ] || [ "$ans" = "N" ] &&
+        exit 1
+    ARGS="$ARGS\"${ROLE_VAR}_install\":True,"
+fi
+
+if [ $# -eq 2 ]; then
+   export ANSIBLE_LOG_PATH="$2"
+else
+   export ANSIBLE_LOG_PATH="$CWD/iiab-debug.log"
+fi
+
+ARGS="$ARGS\"role_to_run\":\"$1\"}"    # $1 works like \"$1\" if str validated
+CMD="ansible-playbook -i $INVENTORY $PLAYBOOK --connection=local $ARGS"
+echo -e "\e[1mbash will now run this, adding single quotes around the {...} curly braces:\e[0m\n\n$CMD\n"
+ansible -m setup -i $INVENTORY localhost --connection=local | grep python
+$CMD
+
+# bash forces (NECESSARY) single quotes around {} at runtime (if $ARGS contains
+# curly braces).  If you also add single quotes *within* $ARGS, Ansible will
+# FAIL as you will end up with 2-not-1 single-quotes on each side of the {}.
+# https://docs.ansible.com/ansible/latest/user_guide/playbooks_variables.html#json-string-format
+#
+# Change the top line of this file to 'bash -x' to see this happen live.  Or,
+# if you prefer the single quotes in the $ARGS var itself, run it this way:
+#
+# echo $CMD > /tmp/runrole-ansible-cmd
+# bash /tmp/runrole-ansible-cmd

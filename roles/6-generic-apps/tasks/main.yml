@@ -3,75 +3,76 @@
 - name: ...IS BEGINNING ====================================
   command: echo
 
+# UNMAINTAINED
+- name: AZURACAST
+  include_role:
+    name: azuracast
+  when: azuracast_install is defined and azuracast_install
+
+# UNMAINTAINED
 - name: DOKUWIKI
   include_role:
     name: dokuwiki
-  when: dokuwiki_install
-  tags: dokuwiki
+  when: dokuwiki_install is defined and dokuwiki_install
 
-- name: MEDIAWIKI
+# UNMAINTAINED
+- name: EJABBERD
   include_role:
-    name: mediawiki
-  when: mediawiki_install
-  tags: mediawiki
+    name: ejabberd
+  when: ejabberd_install is defined and ejabberd_install
 
 - name: ELGG
   include_role:
     name: elgg
   when: elgg_install
-  tags: elgg
 
-- name: EJABBERD
+- name: GITEA
   include_role:
-    name: ejabberd
-  when: ejabberd_install
-  tags: ejabberd
+    name: gitea
+  when: gitea_install
+
+- name: JUPYTERHUB
+  include_role:
+    name: jupyterhub
+  when: jupyterhub_install
 
 - name: LOKOLE
   include_role:
     name: lokole
   when: lokole_install
-  tags: lokole
+
+- name: MEDIAWIKI
+  include_role:
+    name: mediawiki
+  when: mediawiki_install
 
 - name: MOSQUITTO
   include_role:
     name: mosquitto
   when: mosquitto_install
-  tags: mosquitto
 
 - name: NODE-RED
   include_role:
     name: nodered
   when: nodered_install
-  tags: nodered
 
 - name: NEXTCLOUD
   include_role:
     name: nextcloud
   when: nextcloud_install
-  tags: nextcloud
-
-#- name: OWNCLOUD
-#  include_role:
-#    name: owncloud
-#  when: owncloud_install
-#  tags: owncloud
 
 - name: PBX
   include_role:
     name: pbx
   when: pbx_install
-  tags: pbx  
 
 - name: WORDPRESS
   include_role:
     name: wordpress
   when: wordpress_install
-  tags: wordpress
 
 - name: Recording STAGE 6 HAS COMPLETED ====================
   lineinfile:
-    dest: "{{ iiab_env_file }}"
+    path: "{{ iiab_env_file }}"
     regexp: '^STAGE=*'
     line: 'STAGE=6'
-    state: present

@@ -74,6 +74,8 @@ See also::
 
   /library/calibre-web/metadata_db_prefs_backup.json
 
+See the official docs on Calibre-Web's `Runtime Configuration Options <https://github.com/janeczku/calibre-web/wiki/Configuration>`_.
+
 Back Up Everything
 ------------------
 
@@ -145,9 +147,13 @@ Known Issues
   it's not a priority, as URL's like {http://192.168.0.x/books,
   http://10.8.0.x/books, http://127.0.0.1/books and http://box/books} all work. |se| |nbsp|  Marked as "wontfix" on 2018-09-12: `#1050 <https://github.com/iiab/iiab/issues/1050>`_
 
-* Calibre-Web does not currently use version numbers, so glitches may
+* |ss| Calibre-Web does not currently use version numbers, so glitches may
   occasionally arise, when upstream developers change its master branch without
-  warning.
+  warning. |se|
   
+* |ss| Imagemagick policy prevents generating thumbnails for PDF's during upload: `#1530 <https://github.com/iiab/iiab/issues/1530>`_ `janeczku/calibre-web#827 <https://github.com/janeczku/calibre-web/issues/827>`_ |se|
+
+* Upload of not supported file formats gives no feedback to the user: `janeczku/calibre-web#828 <https://github.com/janeczku/calibre-web/issues/828>`_
+
 * *Please assist us in reporting serious issues here:*
   https://github.com/janeczku/calibre-web/issues

@@ -11,7 +11,7 @@ proxy: squid
 proxy_user: squid
 apache_service: httpd
 apache_user: apache
-apache_config_dir: httpd/conf.d
+apache_conf_dir: httpd/conf.d
 apache_log_dir: /var/log/httpd
 smb_service: smb
 nmb_service: nmb
@@ -21,6 +21,3 @@ apache_log: /var/log/httpd/access_log
 sshd_package: openssh-server
 sshd_service: sshd
 systemd_location: /usr/lib/systemd/system
-# Upgrade OS's own Calibre to very latest:
-calibre_via_debs: False
-calibre_via_python: True

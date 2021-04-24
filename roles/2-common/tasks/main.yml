@@ -18,81 +18,38 @@
 - include_tasks: xo.yml
   when: xo_model != "none" or osbuilder is defined
 
-# the following installs common packages for both debian and fedora
 - include_tasks: packages.yml
-
 - include_tasks: iptables.yml
 
-- sysctl:
-    name: net.ipv4.ip_forward
-    value: 1
-    state: present
+# Ongoing rework (e.g. PR #2652) arising from ansible.posix collection changes:
+- name: Use 'sysctl' to set 5 network/kernel settings, turning off IPv6 if possible
+  sysctl:    # Places these settings in /etc/sysctl.conf, to survive reboot
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+  with_items:
+    - { name: 'net.ipv4.ip_forward', value: '1' }  # Masquerading LAN->Internet
+    - { name: 'net.ipv4.conf.default.rp_filter', value: '1' }
+    - { name: 'net.ipv4.conf.default.accept_source_route', value: '0' }
+    #- { name: 'kernel.sysrq', value: '1' }             # OS values differ, Ok?
+    - { name: 'kernel.core_uses_pid', value: '1' }
+    #- { name: 'net.ipv4.tcp_syncookies', value: '1' }  # Very standard in 2020
+    #- { name: 'kernel.shmmax', value: '268435456' }    # OS values differ, Ok?
+    - { name: 'net.ipv6.conf.all.disable_ipv6', value: '1' }    # IPv6 disabled
+    #- { name: 'net.ipv6.conf.default.disable_ipv6', value: '1' }    # AUTO-SET
+    #- { name: 'net.ipv6.conf.lo.disable_ipv6', value: '1' }         # BY ABOVE
 
-- sysctl:
-    name: net.ipv4.conf.default.rp_filter
-    value: 1
-    state: present
-
-- sysctl:
-    name: net.ipv4.conf.default.accept_source_route
-    value: 0
-    state: present
-
-- sysctl:
-    name: kernel.sysrq
-    value: 1
-    state: present
-
-- sysctl:
-    name: kernel.core_uses_pid
-    value: 1
-    state: present
-
-- sysctl:
-    name: net.ipv4.tcp_syncookies
-    value: 1
-    state: present
-
-- sysctl:
-    name: kernel.shmmax
-    value: 268435456
-    state: present
-
-# IPv6 disabled
-
-- sysctl:
-    name: net.ipv6.conf.all.disable_ipv6
-    value: 1
-    state: present
-
-- sysctl:
-    name: net.ipv6.conf.default.disable_ipv6
-    value: 1
-    state: present
-
-- sysctl:
-    name: net.ipv6.conf.lo.disable_ipv6
-    value: 1
-    state: present
-
-- name: Install custom /etc/profile.d/zzz_iiab.sh from template
+- name: Install /etc/profile.d/zzz_iiab.sh from template, to add sbin dirs to unprivileged users' $PATH
   template:
     dest: /etc/profile.d/zzz_iiab.sh
     src: zzz_iiab.sh
-    owner: root
-    mode: 0644
-    backup: no
 
 - include_tasks: net_mods.yml
   when: not is_debuntu and not is_F18
-
-- include_tasks: udev.yml
 
 - include_tasks: iiab-startup.yml
 
 - name: Recording STAGE 2 HAS COMPLETED ==========================
   lineinfile:
-    dest: "{{ iiab_env_file }}"
+    path: "{{ iiab_env_file }}"
     regexp: '^STAGE=*'
     line: 'STAGE=2'
-    state: present

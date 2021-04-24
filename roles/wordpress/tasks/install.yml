@@ -16,60 +16,48 @@
     url: "{{ wordpress_download_base_url }}/{{ wordpress_src }}"
     dest: "{{ downloads_dir }}"
     timeout: "{{ download_timeout }}"
-#   force: yes
-#   backup: yes
   register: wp_download_output
   when: internet_available
 
-- name: Create symlink from /opt/iiab/downloads/wordpress.tar.gz to {{ wp_download_output.dest }}
+- name: Symlink {{ downloads_dir }}/wordpress.tar.gz -> {{ wp_download_output.dest }}
   file:
     src: "{{ wp_download_output.dest }}"
-    path: "{{ downloads_dir }}/wordpress.tar.gz"
+    path: "{{ downloads_dir }}/wordpress.tar.gz"    # /opt/iiab/downloads
     state: link
   when: wp_download_output.dest is defined
 
-- name: Does /opt/iiab/downloads/wordpress.tar.gz link exist?
+- name: Does {{ downloads_dir }}/wordpress.tar.gz link exist?
   stat:
-    path: "{{ downloads_dir }}/wordpress.tar.gz"
+    path: "{{ downloads_dir }}/wordpress.tar.gz"    # /opt/iiab/downloads
   register: wp_link
 
-- name: FAIL (force Ansible to exit) IF /opt/iiab/downloads/wordpress.tar.gz doesn't exist
+- name: FAIL (force Ansible to exit) IF {{ downloads_dir }}/wordpress.tar.gz doesn't exist
   fail:
     msg: "{{ downloads_dir }}/wordpress.tar.gz is REQUIRED in order to install WordPress."
   when: not wp_link.stat.exists
 
-- name: "Unpack /opt/iiab/downloads/wordpress.tar.gz to permanent location /library/wordpress - owner: root, group: {{ apache_user }}, mode: 0664, keep_newer: yes"
+- name: "Unpack {{ downloads_dir }}/wordpress.tar.gz to permanent location {{ wp_install_path }}/wordpress - owner: root, group: {{ apache_user }}, mode: '0664', keep_newer: yes"
   unarchive:
-    src: "{{ downloads_dir }}/wordpress.tar.gz"
-    dest: "{{ wp_install_path }}"
-    owner: root
-    group: "{{ apache_user }}"
-    mode: 0664
+    src: "{{ downloads_dir }}/wordpress.tar.gz"    # /opt/iiab/downloads
+    dest: "{{ wp_install_path }}"    # /library
+    owner: root    # 2020-01-17: confirmed that wordpress.tar.gz (otherwise) unpacks as nobody:nogroup, with all files as '0644', and all dirs as '0755'
+    group: "{{ apache_user }}"    # DO WE REALLY STILL WANT THIS FOR NGINX?
+    mode: '0664'    # PHP/Apache/NGINX apparently need g+rw (group write access, not just read) similar to '0775' for directory traversing below
     keep_newer: yes
 
-# - name: Rename /library/wordpress* to /library/wordpress
-#   shell: if [ ! -d {{ wp_abs_path }} ]; then mv {{ wp_abs_path }}* {{ wp_abs_path }}; fi
+- name: Make {{ wp_abs_path }} directories 775 so PHP/Apache/NGINX can traverse and write (above files remain 664)
+  command: "/usr/bin/find {{ wp_abs_path }} -type d -exec chmod 775 {} +"    # /library/wordpress
 
-#- name: Make Apache owner and group, 1st pass permissions set to 0664
-#  file: path={{ wp_abs_path }}
-#        recurse=yes
-#        owner=root
-#        group={{ apache_user }}
-#        mode=0664
-#        state=directory
+# 4 stanzas to install wp-keys.php.BAK, wp-keys.php & wp-config.php into /library/wordpress
 
-- name: Make /library/wordpress directories 775 so Apache can traverse and write (most files remain 0664)
-  command: "/usr/bin/find {{ wp_abs_path }} -type d -exec chmod 775 {} +"
-
-- name: Install {{ wp_abs_path }}/wp-keys.php.BAK
+- name: Install {{ wp_abs_path }}/wp-keys.php.BAK from template (if file does not already exist) in case download of 8 dynamically-generated salts/keys fails below
   copy:
     src: wp-keys.php.BAK
-    dest: "{{ wp_abs_path }}/wp-keys.php.BAK"
+    dest: "{{ wp_abs_path }}/wp-keys.php.BAK"    # /library/wordpress
     owner: root
-    group: "{{ apache_user }}"
-    mode: 0640
-
-# Fetch random salts for WordPress config into wp-keys.php file by generating script and running
+    group: "{{ apache_user }}"    # DO WE REALLY STILL WANT THIS FOR NGINX?
+    mode: '0640'
+    force: no    # Preserve site's unique keys, as might have been placed into .BAK during an earlier run, by the script below
 
 - name: Install script /tmp/get-iiab-wp-salts from template
   template:
@@ -77,86 +65,41 @@
     dest: /tmp/get-iiab-wp-salts
     owner: root
     group: root
-    mode: 0700
+    mode: '0700'
 
-- name: Run /tmp/get-iiab-wp-salts to create /library/wordpress/wp-keys.php
+- name: Run /tmp/get-iiab-wp-salts to download 8 random salts/keys, creating a new {{ wp_abs_path }}/wp-keys.php (or if nec, copy from known/prior {{ wp_abs_path }}/wp-keys.php.BAK)    # /library/wordpress
   command: /tmp/get-iiab-wp-salts
+  #when: internet_available    # Better to run it every time, installing from wp-keys.php.BAK if download fails
 
-- name: Remove script /tmp/get-iiab-wp-salts
-  file:
-    path: /tmp/get-iiab-wp-salts
-    state: absent
+# Don't Bother: /tmp file are deleted on reboot!
+#- name: Remove script /tmp/get-iiab-wp-salts
+#  file:
+#    path: /tmp/get-iiab-wp-salts
+#    state: absent
 
-- name: Start MySQL systemd service
-  service:
-    state: started
-    name: "{{ mysql_service }}"
-
-- name: 'Create MySQL wordpress database: {{ wp_db_name }}'
-  mysql_db:
-    name: "{{ wp_db_name }}"
-    state: present
-
-- name: Create MySQL wordpress database user
-  mysql_user:
-    name: "{{ wp_db_user }}"
-    password: "{{ wp_db_user_password }}"
-    priv: "{{ wp_db_name }}.*:ALL,GRANT"
-    state: present
-
-- name: Install {{ wp_abs_path }}/wp-config.php
+- name: Install {{ wp_abs_path }}/wp-config.php    # /library/wordpress
   template:
     src: wp-config.php.j2
     dest: "{{ wp_abs_path }}/wp-config.php"
     owner: root
-    group: "{{ apache_user }}"
-    mode: 0660
+    group: "{{ apache_user }}"    # DO WE REALLY STILL WANT THIS FOR NGINX?
+    mode: '0660'    # Others strongly recommend '0600' (or do PHP/Apache/NGINX really need group read & write permissions?)
 
-- name: Install etc/{{ apache_config_dir }}/wordpress.conf from template, for http://box{{ wp_url }}
+- name: Install /etc/{{ apache_conf_dir }}/wordpress.conf from template, for http://box{{ wp_url }} via Apache
   template:
     src: wordpress.conf.j2
-    dest: "/etc/{{ apache_config_dir }}/wordpress.conf"
+    dest: "/etc/{{ apache_conf_dir }}/wordpress.conf"
+  when: apache_installed is defined
 
-- name: Create symlink wordpress.conf from sites-enabled to sites-available, if wordpress_enabled (debuntu)
-  file:
-    src: /etc/apache2/sites-available/wordpress.conf
-    path: /etc/apache2/sites-enabled/wordpress.conf
-    state: link
-  when: wordpress_enabled and is_debuntu
 
-- name: Remove /etc/apache2/sites-enabled/wordpress.conf if not wordpress_enabled (debuntu)
-  file:
-    path: /etc/apache2/sites-enabled/wordpress.conf
-    state: absent
-  when: not wordpress_enabled and is_debuntu
+# RECORD WordPress AS INSTALLED
 
-- name: Restart Apache service ({{ apache_service }}) to enable/disable http://box{{ wp_url }}
-  systemd:
-    name: "{{ apache_service }}"
-    state: restarted
+- name: "Set 'wordpress_installed: True'"
+  set_fact:
+    wordpress_installed: True
 
-- name: Add 'wordpress' variable values to {{ iiab_ini_file }}
-  ini_file:
-    path: "{{ iiab_ini_file }}"
-    section: wordpress
-    option: "{{ item.option }}"
-    value: "{{ item.value }}"
-  with_items:
-    - option: name
-      value: WordPress
-    - option: description
-      value: '"WordPress is a blog and web site management application."'
-    - option: wordpress_src
-      value: "{{ wordpress_src }}"
-    - option: wp_abs_path
-      value: "{{ wp_abs_path }}"
-    - option: wp_db_name
-      value: "{{ wp_db_name }}"
-    - option: wp_db_user
-      value: "{{ wp_db_user }}"
-    - option: wp_url
-      value: "{{ wp_url }}"
-    - option: wp_full_url
-      value: "{{ wp_full_url }}"
-    - option: wordpress_enabled
-      value: "{{ wordpress_enabled }}"
+- name: "Add 'wordpress_installed: True' to {{ iiab_state_file }}"
+  lineinfile:
+    path: "{{ iiab_state_file }}"    # /etc/iiab/iiab_state.yml
+    regexp: '^wordpress_installed'
+    line: 'wordpress_installed: True'

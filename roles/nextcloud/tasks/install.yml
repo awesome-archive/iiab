@@ -1,0 +1,128 @@
+# CHECK FOR PHP VERSION AUTOMATICALLY, TO DETERMINE WHICH NEXTCLOUD TO INSTALL.
+# INSPIRED BY: github.com/iiab/iiab/blob/master/roles/nodejs/tasks/main.yml
+
+# - name: Try to run 'php -v' to get PHP version
+#   # e.g. converts multi-line "PHP 7.0.33-0ubuntu0.16.04.5 (cli) ( NTS ) ..." to "7.0.33"
+#   shell: php -v | head -1 | sed 's/^[^0-9.]*//' | sed 's/[^0-9.].*//'
+#   register: php_version_installed
+#   #ignore_errors: yes    # NOT NEC: if php is not installed, php_version_installed.stdout will get set to ""
+
+# - debug:
+#     var: php_version_installed
+
+# # NOTE: this could easily be made to work even if PHP was not installed, e.g.
+# # by pre-initializing variable 'php_new' to False here.  But trapping the
+# # absence of PHP (below) is a useful software safety precondition!
+# #
+# #- name: Initialize var 'php_new' to False
+# #  set_fact:
+# #    php_new: False
+
+# - name: INTENTIONALLY FAIL, IF PHP (Nextcloud prerequisite) ISN'T INSTALLED
+#   fail:
+#     msg: >
+#       Nextcloud install cannot proceed, as it requires PHP be installed first.
+#       Note that as of 2019-07-04, IIAB takes care of this by forcing vars
+#       mysql_install and mysql_enabled to True in
+#       /opt/iiab/iiab/roles/0-init/tasks/main.yml, which in turn forces the
+#       installation of PHP in /opt/iiab/iiab/roles/mysql/tasks/main.yml, as
+#       invoked by /opt/iiab/iiab/roles/3-base-server/tasks/main.yml
+#   when: php_version_installed.stdout == ""
+
+# - name: Set var 'php_new' indicating if installed version of PHP ({{ php_version_installed.stdout }}) >= 7.1, as required by Nextcloud 16
+#   set_fact:
+#     php_new: "{{ php_version_installed.stdout is version('7.1', '>=') }}"
+#     # Ansible's Version Comparison routine:
+#     # https://docs.ansible.com/ansible/latest/user_guide/playbooks_tests.html#version-comparison
+#   when: php_version_installed.stdout != ""    # i.e. IF ABOVE 'php -v' WORKED
+
+# - debug:
+#     var: php_new
+
+
+# https://docs.nextcloud.com/server/18/admin_manual/installation/source_installation.html#prerequisites-for-manual-installation
+# 2021-04-11: If you're running Nextcloud 21+ in production, carefully check the latest required AND recommended prereqs:
+# https://docs.nextcloud.com/server/21/admin_manual/installation/source_installation.html#prerequisites-for-manual-installation
+- name: Install ffmpeg + libxml2 + 13 php packages
+  package:
+    name:
+      #- dnsutils    # NOT REQUESTED by Nextcloud
+      - ffmpeg       # Optional (for preview generation)
+      - libxml2      # php-libxml requires libxml2 >= 2.7.0
+      #- libapache2-mod-php    # 2020-02-15: NO LONGER NEEDED?
+      - php{{ php_version }}-bcmath        # Highly recommended by Nextcloud 21 for "improved performance and better compatibility"
+      - php{{ php_version }}-bz2           # Optional (for extraction of apps)
+      - php{{ php_version }}-cli           # Likely optional?  @jvonau says this drags in php{{ php_version }}-common as @m-anish wanted in PR #2119 / #2258
+      - php{{ php_version }}-curl
+      - php{{ php_version }}-gd
+      - php{{ php_version }}-gmp           # Optional (for SFTP storage)
+      - php{{ php_version }}-imagick       # Optional (for preview generation)
+      - php{{ php_version }}-intl          # Optional (increases language translation performance and fixes sorting of non-ASCII characters)
+      - php{{ php_version }}-json
+      #- php{{ php_version }}-libxml       # NOT INSTALLABLE: ENABLED BY DEFAULT (https://www.php.net/manual/en/libxml.installation.php)
+      - php{{ php_version }}-mbstring
+      - php{{ php_version }}-mysql
+      #- php{{ php_version }}-openssl      # NOT INSTALLABLE: ENABLED BY DEFAULT?
+      #- php{{ php_version }}-pdo_mysql    # NOT INSTALLABLE: php-mysql handles this on all OS's?
+      #- php{{ php_version }}-redis        # @m-anish future work?
+      #- php{{ php_version }}-session      # NOT INSTALLABLE: ENABLED BY DEFAULT?
+      #- php{{ php_version }}-smbclient    # Optional (SMB/CIFS integration)
+      - php{{ php_version }}-xml           # NOT FORMALLY REQUESTED by Nextcloud (BUT hopefully delivers php-simplexml if not {php-xmlreader, php-xmlwriter} on Raspbian?)
+      - php{{ php_version }}-zip
+      #- php{{ php_version }}-zlib         # NOT INSTALLABLE: ENABLED BY DEFAULT?
+    state: present
+
+# https://docs.nextcloud.com/server/18/admin_manual/installation/source_installation.html#prerequisites-for-manual-installation
+#- name: Install 9 additional php packages, if OS is not Raspbian (these are not available on Raspbian on RPi, as of Feb 2020)
+#  package:
+#    name:
+#      - php{{ php_version }}-ctype
+#      - php{{ php_version }}-dom
+#      - php{{ php_version }}-exif        # Optional (for image rotation in pictures app)
+#      - php{{ php_version }}-fileinfo    # Optional (enhances file analysis performance)
+#      - php{{ php_version }}-iconv
+#      - php{{ php_version }}-posix
+#      - php{{ php_version }}-simplexml
+#      - php{{ php_version }}-xmlreader
+#      - php{{ php_version }}-xmlwriter
+#    state: present
+#  when: not is_raspbian
+
+
+- name: Create dir {{ nextcloud_root_dir }}
+  file:
+    state: directory
+    path: "{{ nextcloud_root_dir }}"    # /library/www/nextcloud
+
+- name: Unarchive {{ nextcloud_dl_url }} (100+ MB) to {{ nextcloud_root_dir }} (400+ MB, {{ apache_user }}:{{ apache_user }})
+  unarchive:
+    remote_src: yes    # Overwrite even if "already exists on the target"
+    src: "{{ nextcloud_dl_url }}"
+    #dest: "{{ nextcloud_base_dir }}"    # /library/www
+    dest: "{{ nextcloud_root_dir }}"     # /library/www/nextcloud
+    owner: "{{ apache_user }}"           # www-data on debuntu
+    group: "{{ apache_user }}"
+    extra_opts: --strip-components=1     # Or use 'dest: /library/www' above
+  when: internet_available
+
+- name: Provision Nextcloud's MySQL DB, run Nextcloud's install wizard, etc
+  include_tasks: setup.yml
+
+- name: Install /etc/{{ apache_conf_dir }}/nextcloud.conf from template, for http://box{{ nextcloud_url }}    # http://box/nextcloud
+  template:
+    src: nextcloud.conf.j2
+    dest: "/etc/{{ apache_conf_dir }}/nextcloud.conf"    # apache2/sites-available on debuntu
+  when: apache_installed is defined
+
+
+# RECORD Nextcloud AS INSTALLED
+
+- name: "Set 'nextcloud_installed: True'"
+  set_fact:
+    nextcloud_installed: True
+
+- name: "Add 'nextcloud_installed: True' to {{ iiab_state_file }}"
+  lineinfile:
+    path: "{{ iiab_state_file }}"    # /etc/iiab/iiab_state.yml
+    regexp: '^nextcloud_installed'
+    line: 'nextcloud_installed: True'

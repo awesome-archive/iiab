@@ -1,0 +1,116 @@
+- name: Create Linux user {{ kolibri_user }} and add it to groups {{ apache_user }}, disk
+  user:
+    name: "{{ kolibri_user }}"
+    groups:
+      - "{{ apache_user }}"
+      - disk
+    state: present
+    shell: /bin/false
+    system: yes
+    create_home: no
+
+- name: Create directory {{ kolibri_home }} for Kolibri content, configuration, sqlite3 databases ({{ kolibri_user }}:{{ apache_user }}, '0755')
+  file:
+    state: directory
+    path: "{{ kolibri_home }}"     # /library/kolibri
+    owner: "{{ kolibri_user }}"    # kolibri
+    group: "{{ apache_user }}"     # www-data (on Debian/Ubuntu/Raspbian)
+
+- name: Create directory /etc/kolibri
+  file:
+    state: directory
+    name: /etc/kolibri
+
+- name: Save kolibri_user ({{ kolibri_user }}) to /etc/kolibri/username
+  copy:
+    content: "{{ kolibri_user }}"
+    dest: /etc/kolibri/username
+
+- name: Save kolibri_home (KOLIBRI_HOME="{{ kolibri_home }}") to /etc/kolibri/daemon.conf
+  copy:
+    content: 'KOLIBRI_HOME="{{ kolibri_home }}"'
+    dest: /etc/kolibri/daemon.conf
+
+- name: apt install latest Kolibri .deb from {{ kolibri_deb_url }} (populates {{ kolibri_home }}, migrates database)    # i.e. /library/kolibri
+  apt:
+    deb: "{{ kolibri_deb_url }}"    # https://learningequality.org/r/kolibri-deb-latest
+  environment:
+    KOLIBRI_HOME: "{{ kolibri_home }}"    # these don't do a thing for now but
+    KOLIBRI_USER: "{{ kolibri_user }}"    # both can't hurt & Might Help Later
+  when: internet_available
+
+- name: 'Install from template: /etc/systemd/system/kolibri.service'
+  template:
+    src: kolibri.service.j2
+    dest: /etc/systemd/system/kolibri.service
+
+- name: 'Install from template: /etc/{{ apache_conf_dir }}/kolibri.conf'
+  template:
+    src: kolibri.conf.j2
+    dest: "/etc/{{ apache_conf_dir }}/kolibri.conf"    # apache2/sites-available
+  when: apache_installed is defined
+
+- name: Stop 'kolibri' systemd service, for Kolibri provisioning (after daemon_reload)
+  systemd:
+    name: kolibri
+    daemon_reload: yes
+    state: stopped
+
+
+# 2019-10-01: Should no longer be nec, thanks to /etc/kolibri/daemon.conf
+#             containing KOLIBRI_HOME="/library/kolibri" (above)
+#- name: Run Kolibri migrations to begin populating {{ kolibri_home }}    # i.e. /library/kolibri
+#  shell: export KOLIBRI_HOME="{{ kolibri_home }}" && "{{ kolibri_exec_path }}" manage migrate
+#  ignore_errors: yes
+#  become: yes
+#  become_user: "{{ kolibri_user }}"
+#  when: kolibri_provision
+
+# 2020-01-05: Deprecated per https://github.com/iiab/iiab/issues/2103
+#- name: Set Kolibri default language ({{ kolibri_language }})
+#  shell: export KOLIBRI_HOME="{{ kolibri_home }}" && "{{ kolibri_exec_path }}" language setdefault "{{ kolibri_language }}"
+#  ignore_errors: yes
+#  become: yes
+#  become_user: "{{ kolibri_user }}"
+#  when: kolibri_provision
+
+- name: 'Provision Kolibri, while setting: facility name, admin acnt / password, preset type, and language'
+  shell: >
+    export KOLIBRI_HOME="{{ kolibri_home }}" &&
+    "{{ kolibri_exec_path }}" manage provisiondevice --facility "{{ kolibri_facility }}"
+    --superusername "{{ kolibri_admin_user }}" --superuserpassword "{{ kolibri_admin_password }}"
+    --preset "{{ kolibri_preset }}" --language_id "{{ kolibri_language }}"
+    #--preset "{{ kolibri_preset }}" --language_id "{{ kolibri_language }}" --verbosity 0 --noinput
+  ignore_errors: yes
+  become: yes
+  become_user: "{{ kolibri_user }}"
+  when: kolibri_provision
+
+- name: chown -R {{ kolibri_user }}:{{ apache_user }} {{ kolibri_home }} for good measure?
+  file:
+    path: "{{ kolibri_home }}"     # /library/kolibri
+    owner: "{{ kolibri_user }}"    # kolibri
+    group: "{{ apache_user }}"     # www-data (on Debian/Ubuntu/Raspbian)
+    recurse: yes
+  when: kolibri_provision
+
+
+# 2019-10-07: Moved to roles/httpd/tasks/main.yml
+# 2019-09-29: roles/kiwix/tasks/kiwix_install.yml installs 4 Apache modules
+# for similar purposes (not all nec?)  Only 1 (proxy_http) is needed here.
+#- name: Enable Apache module proxy_http for http://box{{ kolibri_url }}    # i.e. http://box/kolibri
+#  apache2_module:
+#    name: proxy_http
+
+
+# RECORD Kolibri AS INSTALLED
+
+- name: "Set 'kolibri_installed: True'"
+  set_fact:
+    kolibri_installed: True
+
+- name: "Add 'kolibri_installed: True' to {{ iiab_state_file }}"
+  lineinfile:
+    path: "{{ iiab_state_file }}"    # /etc/iiab/iiab_state.yml
+    regexp: '^kolibri_installed'
+    line: 'kolibri_installed: True'

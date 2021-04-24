@@ -7,62 +7,34 @@
   include_role:
     name: transmission
   when: transmission_install
-  tags: transmission
 
 - name: AWSTATS
   include_role:
     name: awstats
   when: awstats_install
-  tags: awstats
   
 - name: MONIT
   include_role:
     name: monit
   when: monit_install
-  tags: monit
 
 - name: MUNIN
   include_role:
     name: munin
   when: munin_install
-  tags: munin
 
 - name: PHPMYADMIN
   include_role:
     name: phpmyadmin
   when: phpmyadmin_install
-  tags: phpmyadmin
-
-# UNMAINTAINED
-- name: SUGAR-STATS
-  include_role:
-    name: sugar-stats
-  when: sugar_stats_install is defined and sugar_stats_install and ansible_distribution != "CentOS"
-  tags: olpc, sugar-stats
-
-# UNMAINTAINED
-- name: TEAMVIEWER
-  include_role:
-    name: teamviewer
-  when: teamviewer_install is defined and teamviewer_install
-  tags: teamviewer
 
 - name: VNSTAT
   include_role:
     name: vnstat
   when: vnstat_install
-  tags: vnstat
-
-# UNMAINTAINED
-- name: XOVIS
-  include_role:
-    name: xovis
-  when: xovis_install is defined and xovis_install and ansible_distribution != "CentOS"
-  tags: xovis
 
 - name: Recording STAGE 8 HAS COMPLETED ======================
   lineinfile:
-    dest: "{{ iiab_env_file }}"
+    path: "{{ iiab_env_file }}"
     regexp: '^STAGE=*'
     line: 'STAGE=8'
-    state: present

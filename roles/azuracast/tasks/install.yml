@@ -1,0 +1,78 @@
+- name: AzuraCast - Make config directory {{ azuracast_host_dir }}
+  file: 
+    path: "{{ azuracast_host_dir }}"
+    state: directory
+
+- name: AzuraCast - Install {{ azuracast_host_dir }}/.env from template
+  template:
+    src: env.j2
+    dest: "{{ azuracast_host_dir }}/.env"
+    #owner: root
+    #group: root
+    mode: 0644
+
+- name: AzuraCast - Install {{ azuracast_host_dir }}/docker-compose.override.yml from template
+  template:
+    src: docker-compose.override.yml.j2
+    dest: "{{ azuracast_host_dir }}/docker-compose.override.yml"
+    #owner: root
+    #group: root
+    mode: 0644
+
+- name: AzuraCast - Download {{ docker_sh_url }} to {{ azuracast_host_dir }}
+  get_url:
+    url: "{{ docker_sh_url }}"
+    dest: "{{ azuracast_host_dir }}/"
+    timeout: "{{ download_timeout }}"
+    mode: 0755
+  when: internet_available
+
+- name: AzuraCast - Download AzuraCast's docker-compose.yml sample from GitHub to {{ azuracast_host_dir }}
+  get_url: 
+    url: "{{ docker_compose_url }}"
+    dest: "{{ azuracast_host_dir }}/docker-compose.yml"
+    timeout: "{{ download_timeout }}"
+    mode: 0755
+  when: internet_available
+
+- name: AzuraCast - Make changes to docker.sh script so it runs headless
+  lineinfile:
+    path: "{{ azuracast_host_dir }}/docker.sh"
+    regexp: "^(.*)read reply.*"
+    line: "\\1reply='Y'"
+    backrefs: yes
+
+- name: AzuraCast - Make directory {{ docker_container_dir }}
+  file: 
+    path: "{{ docker_container_dir }}"
+    state: directory
+  
+- name: AzuraCast - Symlink /var/lib/docker -> {{ docker_container_dir }}
+  file:
+    src: "{{ docker_container_dir }}"
+    path: /var/lib/docker
+    state: link 
+
+- name: Change default port number range 8xxx:8xxx to {{ azuracast_port_range_prefix }}xxx:{{ azuracast_port_range_prefix }}xxx icecast-stations in docker-compose.yml
+  replace:
+    path: "{{ azuracast_host_dir }}/docker-compose.yml"
+    regexp: "^( *- \\')8([0-9]{3})\\:8([0-9]{3}\\'.*)$"
+    replace: "\\g<1>{{ azuracast_port_range_prefix }}\\g<2>:{{ azuracast_port_range_prefix }}\\g<3>"
+
+- name: AzuraCast - Run the installer
+  shell: "/bin/bash docker.sh install"
+  args:
+    chdir: "{{ azuracast_host_dir }}"
+
+
+# RECORD AzuraCast AS INSTALLED
+
+- name: "Set 'azuracast_installed: True'"
+  set_fact:
+    azuracast_installed: True
+
+- name: "Add 'azuracast_installed: True' to {{ iiab_state_file }}"
+  lineinfile:
+    path: "{{ iiab_state_file }}"    # /etc/iiab/iiab_state.yml
+    regexp: '^azuracast_installed'
+    line: 'azuracast_installed: True'

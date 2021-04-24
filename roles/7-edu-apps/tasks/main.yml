@@ -7,49 +7,46 @@
   include_role:
     name: kalite
   when: kalite_install
-  tags: kalite
 
 - name: KOLIBRI
   include_role:
     name: kolibri
   when: kolibri_install
-  tags: kolibri
 
 - name: KIWIX
   include_role:
     name: kiwix
   when: kiwix_install
-  tags: kiwix
 
 - name: MOODLE
   include_role:
     name: moodle
   when: moodle_install
-  tags: olpc, moodle
+
+- name: OSM-VECTOR-MAPS
+  include_role:
+    name: osm-vector-maps
+  when: osm_vector_maps_install
 
 # UNMAINTAINED
 - name: OSM
   include_role:
     name: osm
   when: osm_install is defined and osm_install
-  tags: osm
 
 # UNMAINTAINED
 - name: PATHAGAR
   include_role:
     name: pathagar
   when: pathagar_install is defined and pathagar_install
-  tags: pathagar
 
 - name: SUGARIZER
   include_role:
     name: sugarizer
   when: sugarizer_install
-  tags: sugarizer
 
 - name: Recording STAGE 7 HAS COMPLETED ========================
   lineinfile:
-    dest: "{{ iiab_env_file }}"
+    path: "{{ iiab_env_file }}"
     regexp: '^STAGE=*'
     line: 'STAGE=7'
-    state: present

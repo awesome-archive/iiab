@@ -1,29 +1,80 @@
+# IIAB Networking Doc: https://github.com/iiab/iiab/wiki/IIAB-Networking
+# Ansible README: https://github.com/iiab/iiab/tree/master/roles/network
+# http://FAQ.IIAB.IO -> click on "Any other networking tips?"
+
+# Firewall (iptables) can be tuned in /etc/iiab/local_vars.yml with this var:
+# ports_externally_visible: 3
+# https://github.com/iiab/iiab/wiki/IIAB-Networking#firewall-iptables
+
+# Ethernet - IF NECESSARY, CUSTOMIZE THESE 4+1 VARS IN /etc/iiab/local_vars.yml
+# See "How do I set a static IP address?" for Ethernet, in http://FAQ.IIAB.IO
+# wan_ip: dhcp       # wan_ip: 192.168.1.99
+# wan_netmask:       # wan_netmask: 255.255.255.0
+# wan_gateway:       # wan_gateway: 192.168.1.254
+# wan_nameserver:    # wan_nameserver: 192.168.1.254
+# wan_try_dhcp_before_static_ip: True   # Facilitate field updates w/ cablemodems
+# Details @ roles/network/templates/network/dhcpcd.conf.j2 for /etc/dhcpcd.conf
+
+# Wi-Fi - IF NECESSARY, CUSTOMIZE THESE 6 VARIABLES IN /etc/iiab/local_vars.yml
+# host_country_code: US
+# host_ssid: Internet in a Box
+# host_wifi_mode: g
+# host_channel: 6
+# hostapd_secure: False
+# hostapd_password: changeme
+#
+# hostapd_install: True    # 2020-01-21: do not rely on this var for now (might be implemented in future)
+# hostapd_enabled: True
+# Above set in /opt/iiab/iiab/vars/default_vars.yml
+
+hostapd_wait: 10
+host_wireless_n: False
+driver_name: nl80211
+ap0_mac_addr: b8:27:99:12:34:56
+
+# DNS / name resolution
+# dhcpd_install: False
+# dhcpd_enabled: False
+# named_install: False
+# named_enabled: False
+# dnsmasq_enabled: True
+# dnsmasq_install: True
+# dns_jail_enabled: False
+# Above 7 vars set in /etc/iiab/local_vars.yml
+#
+# dhcp_service: ????                 # Set in individual OS's /opt/iiab/iiab/vars/<OS>.yml for use in roles/network/tasks/dhcpd.yml
+# dhcp_service2: "dhcpd disabled"    # Moved to roles/network/tasks/computed_services.yml as community transitions from named/BIND to dnsmasq (PR #1202)
+
+# Dynamically calculated later
+# iiab_network_mode: "Gateway"
+
 # Defaults for network detection
 wireless_lan_present: False
 strict_networking: False
 iiab_demo_mode: False
 gui_static_wan: False
-wan_cidr:
+wan_cidr: ""
+virtual_network_devices: "-e ap0 -e lo -e br0 -e tun -e br- -e docker -e bridge0 -e veth"
 
 # Set defaults for discovery process as strings
 wifi1: "not found-1"
 wifi2: "not found-2"
-ap_device: "none"
-device_gw: "none"
-device_gw2: ""
+exclude_devices: none
+device_gw: none
+prior_gw_device: unset
 
-iiab_wan_iface: "none"
-iiab_lan_iface: "none"
-discovered_lan_iface: "none"
-discovered_wired_iface: "none"
-discovered_wireless_iface: "none"
+iiab_wan_iface: none
+iiab_lan_iface: none
+discovered_lan_iface: none
+discovered_wired_iface: none
+discovered_wireless_iface: none
 
 # Red Hat
 #iiab_wired_lan_iface: "none"
 #iiab_wireless_lan_iface: "none"
 has_WAN: False
-has_ifcfg_gw: "none"
-has_wifi_gw: "none"
+has_ifcfg_gw: none
+has_wifi_gw: none
 
 # Debian
 dhcpcd_result: ""
@@ -31,59 +82,30 @@ wan_in_interfaces: False
 network_manager_active: False
 systemd_networkd_active: False
 
-# The values here are default local variables.
-gui_wan_iface: "unset"
-gui_static_wan_ip: "unset"
-gui_desired_network_role: Gateway
-wondershaper_dspeed: "4096"
-wondershaper_upspeed: "1024"
+# The values here are default local variables
+gui_wan_iface: unset
+gui_static_wan_ip: unset
+wondershaper_dspeed: 4096
+wondershaper_upspeed: 1024
 
-# Wi-Fi
-host_ssid: IIAB
-hostapd_wait: 1
-host_wifi_mode: g
-host_channel: 6
-host_wireless_n: False
-# Below moved to /etc/iiab/local_vars.yml: (so implementer sets this)
-#host_country_code: US
-hostapd_secure: True
-hostapd_password: "iiab2017"
-driver_name: nl80211
-hostapd_enabled: True
-# Above is forcibly set to False (in roles/network/tasks/main.yml) if IIAB is
-# being WiFi-installed (run "iiab-hotspot-on" AFTER ./iiab-install completes
-# and content is downloaded, to enable the internal WiFi Access Point / AP!)
-reboot_to_AP: False
-# For those installing IIAB over WiFi: "reboot_to_AP: True" overrides the above
-# detection of WiFi-as-gateway, forcing "hostapd_enabled: True" regardless.
+# netplan
+fix_dispatcher: True
 
-network_config_dir: /etc/network/interfaces.d
-#iiab_network_mode: "Gateway"
-dns_jail_enabled: False
-services_externally_visible: False
+# Unused
+# network_config_dir: /etc/network/interfaces.d
 
-# DNS / name resolution
-dhcpd_install: True
-dhcpd_enabled: False
-#dhcp_service: ????                 # Set in individual OS's /opt/iiab/iiab/vars/<OS>.yml for use in roles/network/tasks/dhcpd.yml
-#dhcp_service2: "dhcpd disabled"    # Moved to roles/network/tasks/computed_services.yml as community transitions from named/BIND to dnsmasq (PR #1202)
-named_install: True
-named_enabled: False
-dnsmasq_enabled: True
-dnsmasq_install: True
-
-# Python-based Captive Portal, that @m-anish & @jvonau experimented with in
-# July 2018 (https://github.com/iiab/iiab/pull/870) and that @georgejhunt
-# extensively refined in Sept 2018 (https://github.com/iiab/iiab/pull/1179)
-captive_portal_install: True
-captive_portal_enabled: True
-captive_portal_port: "9090"
-py_captive_portal_port: "9090"
-py_captive_portal_username: "Admin"
-py_captive_portal_password: "changeme"
-# In a pinch, disable it by running: systemctl disable captive-portal
-
-# For @tim-moody's Nodogsplash approach to Captive Portal?
+# Originally for @tim-moody's Nodogsplash approach to Captive Portal
 # Highly experimental as of June 2018: https://github.com/iiab/iiab/issues/608
+#
+# Newer: Python-based Captive Portal, that @m-anish & @jvonau experimented with
+# in July 2018 (https://github.com/iiab/iiab/pull/870) and that @georgejhunt
+# extensively refined in Sept 2018 (https://github.com/iiab/iiab/pull/1179)
 # captive_portal_install: False
 # captive_portal_enabled: False
+# Above 2 vars set in /etc/iiab/local_vars.yml
+# captive_portal_port: 9090
+# Above var set in /opt/iiab/iiab/vars/default_vars.yml
+py_captive_portal_port: 9090
+py_captive_portal_username: Admin
+py_captive_portal_password: changeme
+# In a pinch, disable it by running: systemctl disable captive-portal

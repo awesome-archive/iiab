@@ -3,27 +3,35 @@
 - name: ...IS BEGINNING ====================================
   command: echo
 
-- name: CALIBRE
+- name: INTERNETARCHIVE
   include_role:
-    name: calibre
-  when: calibre_install
-  tags: calibre
+    name: internetarchive
+  when: internetarchive_install
 
-- name: CALIBRE-WEB
+# Is porting to Python 3 complete, and if so does this belong elsewhere?
+- name: CAPTIVE PORTAL
   include_role:
-    name: calibre-web
-  when: calibreweb_install
-  tags: calibre-web
+    name: captiveportal
+  when: captiveportal_install
 
 - name: MINETEST
   include_role:
     name: minetest
   when: minetest_install
-  tags: minetest
+
+# KEEP AT THE END as this installs dependencies from Debian's 'testing' branch!
+- name: CALIBRE
+  include_role:
+    name: calibre
+  when: calibre_install
+
+- name: CALIBRE-WEB
+  include_role:
+    name: calibre-web
+  when: calibreweb_install
 
 - name: Recording STAGE 9 HAS COMPLETED ====================
   lineinfile:
-    dest: "{{ iiab_env_file }}"
+    path: "{{ iiab_env_file }}"
     regexp: '^STAGE=*'
     line: 'STAGE=9'
-    state: present

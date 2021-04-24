@@ -25,9 +25,7 @@ Optionally, you may want to enable `chan_dongle <https://github.com/wdoekes/aste
 
   asterisk_chan_dongle: True
 
-After installing PBX as part of IIAB, please visit http://pbx.lan/freepbx and proceed with initial configuration (no login/password is required initially — you will be asked to set this up).
-
-**CAUTION: it is sometimes necessary to put "[ACTUAL IP ADDRESS] pbx.lan" into the 'hosts' file on the client machine (where the browser is being used) to get http://pbx.lan/freepbx to work.**  This file is ``/etc/hosts`` on Linux and macOS, or ``c:\Windows\System32\Drivers\etc\hosts`` on most Windows machines (conversely, customizing the hosts file is *not* necessary if your browser is able to access the `'LAN' side <https://github.com/iiab/iiab/wiki/IIAB-Networking#internet-in-a-box-iiab-networking>`_ of your IIAB server).
+After installing PBX as part of IIAB, please visit http://box.lan:83/freepbx and proceed with initial configuration (no login/password is required initially — you will be asked to set this up).
 
 You can monitor the FreePBX service with command::
 
@@ -43,7 +41,7 @@ It is possible that FreePBX restarts much more reliably when run on a MIN-sized 
 Raspberry Pi Zero W Warning
 ---------------------------
 
-Node.js applications like Asterisk/FreePBX, Node-RED and Sugarizer `won't work <https://nodered.org/docs/hardware/raspberrypi#swapping-sd-cards>`_ on Raspberry Pi Zero W (ARM6) if you installed Node.js while on RPi 3 or 3 B+ (ARM7).  If necessary, run ``apt remove nodejs`` then ``cd /opt/iiab/iiab`` then `./runrole nodejs <https://github.com/iiab/iiab/blob/master/roles/nodejs/tasks/main.yml>`_ *on the Raspberry Pi Zero W itself* — before proceeding to install Asterisk/FreePBX, Node-RED and/or Sugarizer.
+Node.js applications like Asterisk/FreePBX, Node-RED and Sugarizer won't work on Raspberry Pi Zero W (ARMv6) if you installed Node.js while on RPi 3, 3 B+ (ARMv7) or RPi 4 (ARMv8).  If necessary, run ``apt remove nodejs`` or ``apt purge nodejs`` then ``rm /etc/apt/sources.list.d/nodesource.list; apt update`` then (`attempt! <https://nodered.org/docs/hardware/raspberrypi#swapping-sd-cards>`_) to `install Node.js <https://github.com/iiab/iiab/blob/master/roles/nodejs/tasks/main.yml>`_ *on the Raspberry Pi Zero W itself* (a better approach than "cd /opt/iiab/iiab; ./runrole nodejs" is to try ``apt install nodejs`` or try installing the tar file mentioned at `#2082 <https://github.com/iiab/iiab/issues/2082#issuecomment-569344617>`_).  You might also need ``apt install npm``.  Whatever versions of Node.js and npm you install, make sure ``/etc/iiab/iiab_state.yml`` contains the line ``nodejs_installed: True`` (add it if nec!)  Finally, proceed to install Asterisk/FreePBX, Node-RED and/or Sugarizer.  `#1799 <https://github.com/iiab/iiab/issues/1799>`_
 
 Attribution
 -----------

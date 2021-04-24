@@ -1,7 +1,7 @@
 # This configuration file supplements the main Apache 
 # server configuration file (conf/httpd.conf).  It contains the
 # configuration directives that specifically relate to the
-# XSCE Schoolserver.
+# IIAB Schoolserver.
 #
 # Some of the choices are a bit subjective, but in general directives
 # that are still valid in 2.4 are left if they override something
@@ -38,7 +38,23 @@ ServerTokens OS
 #
 # Timeout: The number of seconds before receives and sends time out.
 #
-Timeout 120
+# Timeout 120
+#
+# 2020-01-15: To mitigate the worst of Kiwix search timeouts, let's comment out
+# the above "Timeout 120" and defer to Apache default "Timeout 300" as set in:
+#    /etc/apache2/apache2.conf
+# Let's very soon also raise NGINX default "proxy_read_timeout 60s;" within:
+#    /etc/nginx/nginx.conf OR...
+#    /etc/nginx/server.conf OR...
+#    /etc/nginx/proxy_params AND POSSIBLY ALSO...
+#    /etc/nginx/conf.d/kiwix-nginx.conf
+# These 2 NGINX defaults might also need changing on overtaxed IIAB servers...?
+#    proxy_connect_timeout 60s;    # time to answer the door bell
+#    proxy_send_timeout 60s;       # time to accept the request
+# More background details on this ongoing Kiwix problem:
+#    https://github.com/iiab/iiab/pull/2063
+#    https://github.com/iiab/iiab/issues/2152
+#    https://github.com/kiwix/kiwix-tools/issues/345
 
 #
 # KeepAlive: Whether or not to allow persistent connections (more than
@@ -214,7 +230,7 @@ DocumentRoot "{{ doc_root }}"
 # negotiated documents.  The MultiViews Option can be used for the 
 # same purpose, but it is much slower.
 #
-# XSCE has both multiview and .var strategies
+# IIAB has both multiview and .var strategies
 
 DirectoryIndex index.html index.html.var
 

@@ -14,26 +14,20 @@
     state: present
   when: is_redhat
 
-- name: Install {{ iiab_download_url }}/usbmount_0.0.14.1_all.deb, missing from Debian (debian-9 or debian-10, if NOT rpi)
-  apt:
-    deb: "{{ iiab_download_url }}/usbmount_0.0.14.1_all.deb"
-    #timeout: "{{ download_timeout }}"    # Ansible's apt module doesn't support timeout parameter; that's ok as usbmount_0.0.14.1_all.deb is only 10KB
-  when: internet_available and (is_debian_9 or is_debian_10) and not is_rpi
-
-- name: "Install 7 deb/apt packages: avahi-daemon, avahi-discover, exfat-fuse, exfat-utils, inetutils-syslogd, libnss-mdns, wpasupplicant (debuntu)"
+- name: "Install 6 deb/apt packages: avahi-daemon, exfat-fuse, exfat-utils, inetutils-syslogd, libnss-mdns, wpasupplicant (debuntu)"
   package:
     name:
+#      - avahi-discover
       - avahi-daemon
-      - avahi-discover
-      - exfat-fuse
-      - exfat-utils
+      - exfat-fuse     # Should no longer be nec with 5.4+ kernels.
+      - exfat-utils    # Likewise.
       - inetutils-syslogd
       - libnss-mdns
       - wpasupplicant
     state: present
   when: is_debuntu
 
-- name: "Install 22 common packages: acpid, bridge-utils, bzip2, curl, gawk, hostapd, htop, i2c-tools, logrotate, make, mlocate, netmask, net-tools, ntfs-3g, pandoc, rsync, sudo, tar, unzip, usbmount, usbutils, wget"
+- name: "Install 22 common packages: acpid, bridge-utils, bzip2, curl, gawk, hostapd, htop, i2c-tools, logrotate, make, mlocate, netmask, net-tools, ntfs-3g, pandoc, pastebinit, rsync, sqlite3, tar, unzip, usbutils, wget"
   package:
     name:
       - acpid
@@ -46,7 +40,7 @@
       - htop
       - i2c-tools
       - logrotate
-      #- lynx    # already installed by 1-prep's roles/iiab-admin/tasks/access.yml
+      #- lynx    # Installed by 1-prep's roles/iiab-admin/tasks/access.yml
       - make
       - mlocate
       - netmask
@@ -54,20 +48,14 @@
       - ntfs-3g
       #- openssh-server    # ssh (Raspbian) or openssh-server (other OS's) already installed by 1-prep's roles/sshd/tasks/main.yml
       - pandoc
+      - pastebinit
       - rsync
-      - sudo
+      #- screen    # Installed by 1-prep's roles/iiab-admin/tasks/access.yml
+      - sqlite3
+      #- sudo    # Installed by 1-prep's roles/iiab-admin/tasks/sudo-prereqs.yml
       - tar
       - unzip
-      - usbmount
+      #- usbmount    # Moved to roles/usb_lib/tasks/install.yml
       - usbutils
       - wget
-    state: present
-
-- name: "Install 4 common Python packages: python-passlib, python-pip, python-setuptools, python-virtualenv"
-  package:
-    name:
-      - python-passlib
-      - python-pip
-      - python-setuptools
-      - python-virtualenv
     state: present

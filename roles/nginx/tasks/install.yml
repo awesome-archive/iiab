@@ -1,0 +1,62 @@
+- name: Stop '{{ apache_service }}' systemd service
+  systemd:
+    name: "{{ apache_service }}"    # apache2 or httpd, per /opt/iiab/iiab/vars/<OS>.yml
+    state: stopped
+  ignore_errors: yes
+  # 'when: apache_installed is defined' insuff b/c mysql's php installs apache2
+
+- name: Install required and helper packages for NGINX
+  package:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - nginx-extras
+    - uwsgi
+    - uwsgi-plugin-python3
+    - php-fpm
+    - libnginx-mod-http-subs-filter
+
+# 2020-10-16: Removed per #2560
+#- name: Add user '{{ apache_user }}' to shadow group, so it can authenticate Admin Console
+#  user:
+#    name: "{{ apache_user }}"    # www-data or apache, per /opt/iiab/iiab/vars/<OS>.yml
+#    groups: shadow
+
+- name: Remove NGINX default config /etc/nginx/sites-enabled/default
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+
+- name: 'Install 2 (of 4) files from template: /etc/nginx/server.conf, /etc/nginx/nginx.conf'
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: 'server.conf.j2', dest: '/etc/nginx/server.conf' }
+    - { src: 'nginx.conf.j2', dest: '/etc/nginx/nginx.conf' }
+    - { src: 'mime.types.j2', dest: '/etc/nginx/mime.types' }
+    #- { src: 'ports.conf.j2', dest: '/etc/{{ apache_service }}/ports.conf' }    # Moved to enable-or-disable.yml
+    #- { src: 'iiab.conf.j2', dest: "{{ nginx_conf_dir }}/iiab.conf" }    # Moved into homepage.yml below
+
+- debug:
+    msg: roles/nginx/tasks/homepage.yml will run LATER (invoked by roles/www_options/tasks/main.yml) SO THAT NGINX CAN REDIRECT http://box TO http://box{{ iiab_home_url }} (based on var iiab_home_url)
+# - include_tasks: roles/nginx/tasks/homepage.yml
+
+- name: Restart php{{ php_version }}-fpm systemd service
+  systemd:
+    name: "php{{ php_version }}-fpm"
+    state: restarted
+  #when: nginx_enabled
+
+
+# RECORD NGINX AS INSTALLED
+
+- name: "Set 'nginx_installed: True'"
+  set_fact:
+    nginx_installed: True
+
+- name: "Add 'nginx_installed: True' to {{ iiab_state_file }}"
+  lineinfile:
+    path: "{{ iiab_state_file }}"    # /etc/iiab/iiab_state.yml
+    regexp: '^nginx_installed'
+    line: 'nginx_installed: True'

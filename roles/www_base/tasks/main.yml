@@ -1,0 +1,59 @@
+# Role "www_base" runs here, probably in 3-BASE-SERVER.
+# Role "www_options" runs later, likely in 4-SERVER-OPTIONS.
+
+- name: 'Install ~10 PHP packages (debuntu)'
+  package:
+    name:
+      # - php{{ php_version }}    # On Ubuntu 20.04 (and prob other OS's) this forces the install of: apache2 apache2-bin apache2-data apache2-utils libapache2-mod-php{{ php_version }} ETC
+      - php{{ php_version }}-common    # 2020-05-21: @jvonau suggests this to avoid Apache above.  Or its superset php{{ php_version }}-cli if absolutely nec?
+      - php{{ php_version }}-curl
+      - php{{ php_version }}-gd
+      - php{{ php_version }}-imap
+      - php{{ php_version }}-ldap
+      - php{{ php_version }}-mysql
+      - php{{ php_version }}-odbc
+      - php-pear
+      # - php{{ php_version }}-sqlite3    # 2020-07-10: Experimentally install this within roles/osm-vector-maps/tasks/install.yml only, as part of OSM fix PR #2464 for #2461.
+      - php{{ php_version }}-xml    # Was below
+      - php{{ php_version }}-xmlrpc
+    state: present
+  when: is_debuntu
+
+- name: Using html.yml
+  include_tasks: html.yml
+
+- name: Using php-stem.yml
+  include_tasks: php-stem.yml
+
+- name: Create dir {{ doc_root }}/home -- if you customized var iiab_home_url e.g. in /etc/iiab/local_vars.yml, that dir is created later -- by www_options/tasks/main.yml
+  file:
+    state: directory
+    path: "{{ doc_root }}/home"    # /library/www/html
+    owner: "{{ apache_user }}"
+    group: "{{ apache_user }}"
+
+- name: Create dir {{ doc_root }}/info for http://box/info offline docs
+  file:
+    state: directory
+    path: "{{ doc_root }}/info"    # /library/www/html
+    owner: "{{ apache_user }}"
+    group: "{{ apache_user }}"
+
+- name: Install /usr/bin/iiab-refresh-wiki-docs (scraper script) to create http://box/info offline documentation.  (Script can be run manually and/or at the end of Stage 4 = roles/4-server-options/tasks/main.yml)
+  template:
+    src: iiab-refresh-wiki-docs.sh
+    dest: /usr/bin/iiab-refresh-wiki-docs
+    mode: '0755'
+
+
+# RECORD www_base AS INSTALLED
+
+- name: "Set 'www_base_installed: True'"
+  set_fact:
+    www_base_installed: True
+
+- name: "Add 'www_base_installed: True' to {{ iiab_state_file }}"
+  lineinfile:
+    path: "{{ iiab_state_file }}"    # /etc/iiab/iiab_state.yml
+    regexp: '^www_base_installed'
+    line: 'www_base_installed: True'

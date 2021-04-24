@@ -1,214 +1,63 @@
-- name: 'Install 3 packages: apache2, php{{ php_version }}, php{{ php_version }}-curl (debian)'
-  package:
-    #name: [u'apache2', u'php{{ php_version }}', u'php{{ php_version }}-curl']    # FAILS ('u' for Unicode strings)
-    #name: ['apache2', 'php{{ php_version }}', 'php{{ php_version }}-curl']       # WORKS?
-    name:
-      - apache2
-      - "php{{ php_version }}"
-      - "php{{ php_version }}-curl"
-    state: present
-  when: is_debian
-  tags:
-    - download
+# "How do i fail a task in Ansible if the variable contains a boolean value?
+# I want to perform input validation for Ansible playbooks"
+# https://stackoverflow.com/questions/46664127/how-do-i-fail-a-task-in-ansible-if-the-variable-contains-a-boolean-value-i-want/46667499#46667499
 
-- name: 'Install 2 packages: apache2, php (ubuntu)'
-  package:
-    #name: [u'apache2', u'php']    # FAILS ('u' for Unicode strings)
-    #name: ['apache2', 'php']      # WORKS
-    name:
-      - apache2
-      - php
-    state: present
-  when: is_ubuntu
-  tags:
-    - download
+# We assume 0-init/tasks/validate_vars.yml has DEFINITELY been run, so no need
+# to re-check whether vars are defined here.  As Ansible vars cannot be unset:
+# https://serverfault.com/questions/856729/how-to-destroy-delete-unset-a-variable-value-in-ansible
 
-- name: Install php{{ php_version }}-sqlite (debian-8)
-  package:
-    name: "php{{ php_version }}-sqlite"
-  when: is_debian and ansible_distribution_major_version == "8"
+- name: Assert that "apache_install is sameas true" (boolean not string etc)
+  assert:
+    that: apache_install is sameas true
+    fail_msg: "PLEASE SET 'apache_install: True' e.g. IN: /etc/iiab/local_vars.yml"
+    quiet: yes
 
-# SQLite3 no longer included in another package
-- name: Install php{{ php_version }}-sqlite3 (debian-9 or ubuntu-18)
-  package:
-    name: "php{{ php_version }}-sqlite3"
-  when: (is_debian and ansible_distribution_major_version == "9") or is_ubuntu_18
+- name: Assert that "apache_enabled | type_debug == 'bool'" (boolean not string etc)
+  assert:
+    that: apache_enabled | type_debug == 'bool'
+    fail_msg: "PLEASE GIVE VARIABLE 'apache_enabled' A PROPER (UNQUOTED) ANSIBLE BOOLEAN VALUE e.g. IN: /etc/iiab/local_vars.yml"
+    quiet: yes
 
-- name: 'Install 4 packages: httpd, mod_authnz_external, php, php-curl (redhat)'
-  package:
-    #name: [u'httpd', u'php', u'php-curl', u'mod_authnz_external']    # FAILS ('u' for Unicode strings)
-    #name: ['httpd', 'php', 'php-curl', 'mod_authnz_external']        # WORKS
-    name:
-      - httpd
-      - mod_authnz_external
-      - php
-      - php-curl
-    state: present
-  when: is_redhat
-  tags:
-    - download
+- debug:
+    var: apache_install
+- debug:
+    var: apache_enabled
+- debug:
+    var: apache_installed
 
-- name: Install Apache's 010-iiab.conf & proxy_ajp.conf into /etc/apache2/sites-available, from templates
-  template:
-    backup: yes
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    owner: root
-    group: root
-    mode: 0644
-  with_items:
-    - { src: '010-iiab.conf.j2', dest: '/etc/{{ apache_config_dir }}/010-iiab.conf' }
-    - { src: 'proxy_ajp.conf.j2', dest: '/etc/{{ apache_config_dir }}/proxy_ajp.conf' }
-    #- { src: 'php.ini.j2', dest: '/etc/php.ini', mode: '0644' }    # @jvonau suggests removing this in https://github.com/iiab/iiab/issues/1147
 
-# For schools that use WordPress and/or Moodle intensively. See iiab/iiab #1147
-# WARNING: Enabling this might cause excess use of RAM/disk or other resources!
-- name: Enact high limits in /etc/php/{{ php_version }}/{{ apache_service }}/php.ini if using WordPress and/or Moodle intensively
-  lineinfile:
-    path: "/etc/php/{{ php_version }}/{{ apache_service }}/php.ini"
-    regexp: "{{ item.regexp }}"
-    line: "{{ item.line }}"
-  when: apache_high_php_limits
-  with_items:
-    - { regexp: '^upload_max_filesize', line: 'upload_max_filesize = 500M    ; default is 2M' }
-    - { regexp: '^post_max_size', line: 'post_max_size = 500M    ; default is 8M' }
-    - { regexp: '^memory_limit', line: 'memory_limit = 256M    ; default is 128M' }
-    - { regexp: '^max_execution_time', line: 'max_execution_time = 300    ; default is 30' }
-    - { regexp: '^max_input_time', line: 'max_input_time = 300    ; default is 60' }
+- name: Install Apache if 'apache_installed' not defined, e.g. in {{ iiab_state_file }}    # /etc/iiab/iiab_state.yml
+  include_tasks: install.yml
+  when: apache_installed is undefined
 
-# remove symlinks for mpm-event, replace with mpm-prefork
-- name: Remove both mpm_event symlinks from /etc/apache2/mods-enabled (debuntu)
-  file:
-    path: "/etc/apache2/mods-enabled/{{ item }}"
-    state: absent
-  with_items:
-    - mpm_event.conf
-    - mpm_event.load
-  when: is_debuntu
 
-- name: Create both mpm_prefork symlinks from /etc/apache2/mods-enabled to /etc/apache2/mods-available (debuntu)
-  file:
-    src: "/etc/apache2/mods-available/{{ item }}"
-    path: "/etc/apache2/mods-enabled/{{ item }}"
-    state: link
-  with_items:
-    - mpm_prefork.conf
-    - mpm_prefork.load
-  when: is_debuntu
-
-- name: 'Turn on mod_proxy using a2enmod with: proxy, proxy_html, headers, rewrite (debuntu)'
-  command: a2enmod {{ item }}
-  with_items:
-    - proxy
-    - proxy_html
-    - headers
-    - rewrite
-  when: is_debuntu
-
-- name: Enable our site, creating 010-iiab.conf symlink from sites-enabled to sites-available (debuntu)
-  file:
-    src: "/etc/{{ apache_config_dir }}/010-iiab.conf"
-    path: /etc/apache2/sites-enabled/010-iiab.conf
-    state: link
-  when: is_debuntu
-
-- name: Remove 000-default.conf from /etc/apache2 and /etc/apache2/sites-enabled (debuntu)
-  file:
-    path: "{{ item }}"
-    state: absent
-  with_items:
-    - /etc/apache2/000-default.conf    # Not nec on Raspbian.  Is this really still needed elsewhere?
-    - /etc/apache2/sites-enabled/000-default.conf
-  when: is_debuntu
-
-- name: Create Apache's pid dir /var/run/{{ apache_user }}
-  file:
-    path: "/var/run/{{ apache_user }}"
-    mode: 0755
-    owner: root
-    group: root
-    state: directory
-
-- name: 'Create group: admin'
-  group:
-    name: admin
-    state: present
-
-- name: Add user {{ apache_user }} (from variable apache_user) to group admin
-  user:
-    name: "{{ apache_user }}"
-    groups: admin
-    state: present
-    createhome: no
-
-- name: Create Apache dir /var/log/{{ apache_service }}
-  file:
-    path: "/var/log/{{ apache_service }}"
-    mode: 0755
-    owner: "{{ apache_user }}"
-    group: "{{ apache_user }}"
-    state: directory
-
-- name: Enable Apache systemd service ({{ apache_service }})
-  service:
-    name: "{{ apache_service }}"
-    enabled: yes
-
-- name: Create /library/www/html/info directory for http://box/info offline docs
-  file:
-    path: "{{ doc_root }}/info"
-    mode: 0755
-    owner: "{{ apache_user }}"
-    group: "{{ apache_user }}"
-    state: directory
-
-# SEE https://github.com/iiab/iiab/issues/1143 as the old roles/osm playbook is rarely used as of late 2018 (if anybody still uses roles/osm, they can overwrite osm.conf using the original osm playbook, or in other ways)
-- name: Install /etc/{{ apache_config_dir }}/osm.conf for http://box/maps (all OS's)
-  copy:
-    src: osm.conf
-    dest: "/etc/{{ apache_config_dir }}"
-    owner: root
-    group: root
-    mode: 0644
-    backup: yes
-
-- name: Symlink /etc/apache2/sites-enabled/osm.conf to /etc/{{ apache_config_dir }}/osm.conf (debuntu)
-  file:
-    src: "/etc/{{ apache_config_dir }}/osm.conf"
-    path: /etc/apache2/sites-enabled/osm.conf
-    #path: "/etc/{{ apache_service }}/sites-enabled/osm.conf"
-    state: link
-  when: is_debuntu
-
-- include_tasks: html.yml
-  tags:
-    - base
-
-# Partially fixes search @ http://box/modules/es-wikihow (on RPi anyway) see https://github.com/iiab/iiab/issues/829
-- include_tasks: php-stem.yml
-  tags:
-    - base
-
-- name: Install /usr/bin/iiab-refresh-wiki-docs (scraper script) to create http://box/info offline documentation.  (Script can be run manually and/or at the end of Stage 4 = roles/4-server-options/tasks/main.yml)
-  template:
-    src: refresh-wiki-docs.sh
-    dest: /usr/bin/iiab-refresh-wiki-docs
-    mode: 0755
-
-- name: Give {{ apache_user }} (per variable apache_user) permission to poweroff, installing /etc/sudoers.d/020_apache_poweroff from template
-  template:
-    src: 020_apache_poweroff.j2
-    dest: /etc/sudoers.d/020_apache_poweroff
-    mode: 0755
-  when: apache_allow_sudo
-
-- name: Remove {{ apache_user }} (per variable apache_user) permission to poweroff, removing /etc/sudoers.d/020_apache_poweroff
-  file:
-    path: /etc/sudoers.d/020_apache_poweroff
-    state: absent
-  when: not apache_allow_sudo
-
-- name: Restart Apache systemd service ({{ apache_service }})
+- name: Enable & Start-if-nec {{ apache_service }} systemd service, if apache_enabled
   systemd:
     name: "{{ apache_service }}"
-    state: restarted
+    enabled: yes
+    state: started    # No need to restart, as many IIAB apps do that later
+  when: apache_enabled
+
+- name: Disable & Stop {{ apache_service }} systemd service, if not apache_enabled
+  systemd:
+    name: "{{ apache_service }}"
+    enabled: no
+    state: stopped
+  when: not apache_enabled
+
+
+- name: Add 'apache' variable values to {{ iiab_ini_file }}
+  ini_file:
+    path: "{{ iiab_ini_file }}"    # /etc/iiab/iiab.ini
+    section: apache
+    option: "{{ item.option }}"
+    value: "{{ item.value | string }}"
+  with_items:
+    - option: name
+      value: Apache
+    - option: description
+      value: '"The Apache HTTP Server (''httpd'')."'
+    - option: apache_install
+      value: "{{ apache_install }}"
+    - option: apache_enabled
+      value: "{{ apache_enabled }}"

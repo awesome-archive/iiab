@@ -1,0 +1,248 @@
+#!/bin/bash
+
+# Collect IIAB diagnostic info into 1 file for easy online/offline circulation!
+# PLEASE SEE /opt/iiab/iiab/scripts/iiab-diagnostics.README.md OR ONLINE HERE:
+# https://github.com/iiab/iiab/blob/master/scripts/iiab-diagnostics.README.md
+
+IIAB_RELEASE=`cat /etc/iiab/iiab.env | grep IIAB_RELEASE | cut -d'=' -f2`
+OS_VER=`cat /etc/iiab/iiab.env | grep OS_VER | cut -d'=' -f2`
+#HASH=`cd /opt/iiab/iiab; git log --pretty=format:'%h' -n 1`
+HASH1=`cd /opt/iiab/iiab; git log --pretty=format:'%H' -n 1`
+HASH2=`cd /opt/iiab/iiab-admin-console; git log --pretty=format:'%H' -n 1`
+YMDT=$(date +%F_%T_%Z)
+
+echo -e "\nGathers IIAB diagnostics into 1 file, to accelerate troubleshooting.  USAGE:"
+echo
+echo -e "   iiab-diagnostics"
+echo -e "   sudo iiab-diagnostics                                # USE 'sudo' FOR MORE"
+echo -e "   sudo iiab-diagnostics PATH/FILE1 PATH/FILE2 ...      # COMPLETE RESULTS !!"
+echo
+echo -ne "Can you provide a \e[1mshort public nickname:\e[0m (no spaces!) "
+read nickname < /dev/tty
+if [ -z "$nickname" ]; then
+    nickname="NONAME"
+fi
+
+# Build up a meaningful shared filename for DEV / IMPLEM / LEARNING team(s)
+outfile=/etc/iiab/diag/${IIAB_RELEASE}_${OS_VER}_${YMDT}_$nickname
+
+# System "snapshots" (time-stamped output from this 'iiab-diagnostics' command)
+# will be stored in globally-writable directory /etc/iiab/diag as created by
+# roles/0-init/tasks/main.yml.  A bit like system logs, but only on request.
+
+function cat_file_raw() {    # $1 = path/filename; $2 = # of lines, for tail
+    if [ -f "$1" ]; then
+        ls -l "$1" >> $outfile
+        if [ ! -s "$1" ]; then
+            echo >> $outfile
+            echo "FILE EXISTS BUT IS EMPTY!" >> $outfile
+        elif [ $# -eq 1 ]; then
+            echo >> $outfile
+            # Redact most passwords from /etc/iiab/local_vars.yml, /etc/hostapd/hostapd.conf, /etc/wpa_supplicant/wpa_supplicant.conf, /etc/netplan/*, /etc/network/interfaces, /etc/network/interfaces.d/* ETC -- not much to worry about in /etc/iiab/iiab.ini (' = ')
+            cat "$1" | sed 's/^\(\s*[[:alnum:]#_-]*\(psk\|passphrase\|password\):\).*/\1 [REDACTED]/; s/^\(\s*[[:alnum:]#_-]*\(psk\|passphrase\|password\)[= \t]\).*/\1[REDACTED]/' | iconv -t UTF-8//IGNORE >> $outfile
+        else    # e.g. last 100 lines, maximum
+            echo "                        ...ITS LAST $2 LINES FOLLOW..." >> $outfile
+            echo >> $outfile
+            tail -$2 "$1" | sed 's/^\(\s*[[:alnum:]#_-]*\(psk\|passphrase\|password\):\).*/\1 [REDACTED]/; s/^\(\s*[[:alnum:]#_-]*\(psk\|passphrase\|password\)[= \t]\).*/\1[REDACTED]/' | iconv -t UTF-8//IGNORE >> $outfile
+        fi
+        echo >> $outfile
+    elif [ -h "$1" ]; then
+        ls -l "$1" >> $outfile
+        echo >> $outfile
+        echo "SYMLINK DOES NOT LEAD TO A REGULAR FILE!" >> $outfile
+        echo >> $outfile
+    elif [ -d "$1" ]; then
+        ls -ld "$1" >> $outfile
+        echo >> $outfile
+        echo "THIS IS A DIRECTORY NOT A FILE!" >> $outfile
+        echo >> $outfile
+    else
+        echo "FILE DOES NOT EXIST: $1" >> $outfile
+    fi
+}
+
+function cat_file() {
+    echo "     $1"
+    echo "=IIAB==========================================================================" >> $outfile
+    cat_file_raw "$1"
+}
+
+function cat_dir() {
+    echo "     $1"
+    echo "=IIAB==========================================================================" >> $outfile
+    if [ -d "$1" ]; then
+        echo "DIRECTORY $1 FILES WILL FOLLOW...IF THEY EXIST" >> $outfile
+        shopt -s nullglob    # To avoid looping over empty directories
+        for f in "$1"/*; do
+            echo "-IIAB--------------------------------------------------------------------------" >> $outfile
+            cat_file_raw "$f" 100
+        done
+    else
+        echo "DIRECTORY DOES NOT EXIST: $1" >> $outfile
+    fi
+}
+
+function cat_cmd() {                        # $1 = command + params, $2 = explanation
+    echo "     $1  # $2"
+    echo "=IIAB==========================================================================" >> $outfile
+    cmd=$(echo "$1" | sed 's/\s.*$//')        # Keep command on left; Drop params on right
+    pth=$(which $cmd | sed 's/[^/]*$//')    # Keep only path on left; Drop command on right
+    echo "COMMAND: $pth$1    # $2" >> $outfile
+    echo >> $outfile
+    if [ -z "$pth" ]; then
+        echo "COMMAND NOT FOUND: $1" >> $outfile
+    else
+        $(echo "eval $1") >> $outfile    # eval is nec within backticks, so | (pipes) work: https://stackoverflow.com/a/7184782
+    fi
+    echo >> $outfile
+}
+
+function cat_tail() {     # $1 = path/filename; $2 = # of lines, for tail
+    echo "     $1"
+    echo "=IIAB==========================================================================" >> $outfile
+    cat_file_raw "$1" $2    # e.g. last 100 lines, maximum
+}
+
+# START BUILDING UP THE FILE THAT'LL CONTAIN THE DIAGNOSTICS!
+echo -e "\nCompiling diagnostics..."
+
+echo -e "\n  0. Filename Header + Git Hashes + Raspberry Pi Model + OS"
+echo "This is: $outfile" >> $outfile
+echo >> $outfile
+echo -e "\n\n\n\n0. GIT HASHES + RASPBERRY PI MODEL + OS" >> $outfile
+echo >> $outfile
+echo "iiab commit:               $HASH1" >> $outfile
+echo "iiab-admin-console commit: $HASH2" >> $outfile
+echo >> $outfile
+cat_file /etc/iiab/pr-list-pulled
+cat_file /sys/firmware/devicetree/base/model
+cat_file /etc/rpi-issue
+echo "-IIAB-EXPLANATION-OF-THE-ABOVE-------------------------------------------------" >> $outfile
+echo >> $outfile
+if [ -f /etc/rpi-issue ]; then
+    echo "stage2 = Raspberry Pi OS Lite" >> $outfile
+    echo "stage4 = Raspberry Pi OS with desktop" >> $outfile
+    echo "stage5 = Raspberry Pi OS with desktop + recommended software" >> $outfile
+    echo >> $outfile
+    echo "SEE https://github.com/RPi-Distro/pi-gen#stage-anatomy" >> $outfile
+else
+    echo "(This is NOT Raspberry Pi OS!)" >> $outfile
+fi
+echo >> $outfile
+cat_file /etc/issue.net
+cat_file /etc/debian_version
+
+echo -e '\n\n  1. Files Specially Requested: (from "iiab-diagnostics PATH/FILE1 PATH/FILE2")\n'
+echo -e '\n\n\n\n1. FILES SPECIALLY REQUESTED (FROM "iiab-diagnostics PATH/FILE1 PATH/FILE2")\n' >> $outfile
+for f in "$@"; do
+    cat_file $f
+done
+
+if [ $# -eq 0 ]; then
+    echo -e "  2. Regular Files:\n"
+else
+    echo -e "\n  2. Regular Files:\n"
+fi
+echo -e "\n\n\n\n2. REGULAR FILES\n" >> $outfile
+#cat_file /dev/sda                    # Device "file" test
+#cat_file /nonsense                   # Non-existence test
+#cat_file /opt/iiab/iiab              # Directory test
+#cat_file /tmp/empty-file             # Empty file test
+#cat_file /usr/bin/iiab-support-on    # Symlink test
+cat_file /etc/iiab/openvpn_handle
+cat_file /.iiab-image
+cat_file /etc/iiab/iiab.env
+cat_file /etc/iiab/iiab.ini
+cat_file /etc/iiab/local_vars.yml      # Redacts most passwords above
+cat_file /etc/iiab/iiab_state.yml
+#cat_file /etc/iiab/config_vars.yml    # No longer common
+cat_file /etc/resolv.conf
+cat_file /etc/network/interfaces
+cat_file /etc/hostapd/hostapd.conf                  # Redacts most passwords above
+cat_file /etc/wpa_supplicant/wpa_supplicant.conf    # Redacts most passwords above
+cat_file /library/www/html/home/menu.json
+
+# Record all Ansible variables: SLOW! OUTPUT TOO LARGE?
+#pushd /opt/iiab/iiab > /dev/null
+#./runrole all-vars /tmp/all-ansible-vars
+#popd > /dev/null
+#cat_file /tmp/all-ansible-vars
+
+echo -e "\n  3. Content of Directories: (1-level deep)\n"
+echo -e "\n\n\n\n3. CONTENT OF DIRECTORIES (1-LEVEL DEEP)\n" >> $outfile
+cat_dir /etc/network/interfaces.d
+cat_dir /etc/systemd/network
+cat_dir /etc/NetworkManager/system-connections
+cat_dir /etc/netplan    # Redacts most passwords above
+#cat_dir /etc/sysconfig/network-scripts/if-cfg*    # No longer common
+#cat_dir /etc/network    # Above file /etc/network/interfaces suffices
+
+echo -e "\n  4. Output of Commands:\n"
+echo -e "\n\n\n\n\n4. OUTPUT OF COMMANDS\n" >> $outfile
+cat_cmd 'uname -a' 'Linux kernel'
+cat_cmd 'free' 'RAM memory'
+cat_cmd 'lscpu' 'CPU details'
+cat_cmd 'df -h' 'Disk usage'
+cat_cmd 'lsblk' 'Partition mount points'
+cat_cmd 'blkid' 'Mount point details'
+cat_cmd 'ip addr' 'Network interfaces'
+cat_cmd 'ifconfig' 'Network interfaces (old view)'
+cat_cmd 'ip route' 'Routing table'
+cat_cmd 'netstat -rn' 'Routing table (old view)'
+cat_cmd 'brctl show' 'Bridge for LAN side'
+cat_cmd 'sudo netstat -natp' 'Ports/Services in use'
+cat_cmd 'systemctl status dnsmasq' 'Is dnsmasq running?'
+cat_cmd 'sudo journalctl -b 0 -u dnsmasq' 'dnsmasq log'
+cat_cmd 'networkctl' 'systemd-networkd status'
+cat_cmd 'nmcli d' 'NetworkManager status'
+cat_cmd 'sudo journalctl -b 0 -u networkd-dispatcher' 'networkd-dispatcher log'
+cat_cmd 'iw reg get' 'Detected WiFi country code / legal frequencies'
+cat_cmd 'iw dev' 'List wireless interfaces'
+cat_cmd 'iw list' 'List capabilities of all wireless devices'
+cat_cmd 'systemctl status hostapd' 'Downstream Wi-Fi: Is hostapd running?'
+cat_cmd 'ls -l /etc/wpa_supplicant' 'Upstream Wi-Fi'
+cat_cmd 'ps -AH' 'Process hierarchy: staging of hostapd & wpa_supplicant?'
+cat_cmd 'dmesg | grep brcm' 'Diagnostic messages: RPi Wi-Fi firmware'
+cat_cmd 'env' 'Environment variables'
+#cat_cmd 'ansible localhost -m setup 2>/dev/null' 'All Ansible facts'    # For cleaner scraping of Ansible vars, consider "./runrole all-vars /tmp/all-ansible-vars" 27-31 lines above?
+
+echo -e "\n  5. Firewall Rules:\n"
+echo -e "\n\n\n\n5. FIREWALL RULES\n" >> $outfile
+cat_file /usr/bin/iiab-gen-iptables
+cat_cmd 'sudo iptables-save' 'Firewall rules'
+
+echo -e "\n  6. Log Files: (last 100 lines of each)\n"
+echo -e "\n\n\n\n6. LOG FILES (LAST 100 LINES OF EACH)\n" >> $outfile
+cat_tail /opt/iiab/iiab/iiab-install.log 100
+cat_tail /opt/iiab/iiab/iiab-configure.log 100
+cat_tail /opt/iiab/iiab/iiab-debug.log 100
+cat_tail /opt/iiab/iiab/iiab-network.log 100
+cat_tail /opt/iiab/iiab-admin-console/admin-install.log 100
+cat_tail /var/log/messages 100
+cat_tail /var/log/syslog 100
+
+linecount=$(wc -l $outfile | sed 's/\s.*$//')
+sizecount=$(du -h $outfile | sed 's/\s.*$//')
+echo -e "\n\e[32m\e[1mCOMPLETE! Your diagnostics file ($sizecount, $linecount lines) is:"
+echo
+echo -e "   $outfile\e[0m"
+
+#if [ "$1" == "-y" ]; then
+#    ans="y"    # if user ran "iiab-diganostics -y" to avoid interactive prompt
+#else
+echo
+echo -ne "\e[42;1mPublish it to a web pastebin? [Y/n]\e[0m "
+read ans < /dev/tty
+#fi
+
+echo -e "\e[1m"
+if [ "$ans" == "" ] || [ "$ans" == "y" ] || [ "$ans" == "Y" ]; then
+    echo -ne "PUBLISHING TO URL... "
+    #pastebinit -b dpaste.com < $outfile
+    pastebinit -b sprunge.us < $outfile    # Run 'pastebinit -l' to list other possible pastebin site URLs
+else
+    echo -e "If you later decide to publish it, run:"
+    echo
+    echo -e "   pastebinit -b sprunge.us < $outfile"
+fi
+echo -e "\e[0m"
