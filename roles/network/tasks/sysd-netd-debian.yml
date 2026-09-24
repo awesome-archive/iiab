@@ -1,21 +1,41 @@
 # sysd-netd-debian.yml
+#- name: Install networkd-dispatcher
+#  package:
+#    name: networkd-dispatcher    #  15kB download: Dispatcher service for systemd-networkd connection status changes
+
+# 2023-10-14 #3657, #3658, #3659: New RasPiOS 12/Bookworm issue.
+# FWIW Ubuntu >= 22.10 offers 'systemd-resolved' as a distinct apt package.
+# Whereas Ubuntu <= 22.04 bundled the functionality within apt package 'systemd'
+# Debian 12/Bookworm (like Ubuntu >= 22.10) offers it as a distinct package:
+# https://www.debian.org/releases/bookworm/amd64/release-notes/ch-information.en.html#systemd-resolved
+#- name: Install systemd-resolved (or intentionally show red error then continue, if apt package not available)
+#  package:
+#    name: systemd-resolved       # 278kB download: For RasPiOS 12/Bookworm
+#  ignore_errors: yes
+  #shell: apt -y install systemd-resolved || true
+  #when: is_raspbian and os_ver is version('raspbian-12', '>=')
+
+# let hostapd bring up br0, clean up stale file
 - name: Copy the bridge script - Creates br0
   template:
     dest: /etc/systemd/network/IIAB-Bridge.netdev
     src: network/systemd-br0.j2
-  when: iiab_lan_iface == "br0"
+  when: iiab_lan_iface == "br0" and not has_netplan
 
 - name: Copy the bridge script - Assigns IP address
   template:
     dest: /etc/systemd/network/IIAB-Bridge.network
     src: network/systemd-br0-network.j2
-  when: iiab_lan_iface == "br0"
+  when: iiab_lan_iface == "br0" and not has_netplan
 
-- name: Copy the bridge script - Assigns br0 wired slaves
+# can be more than one wired interface
+- name: Wired enslaving - Assigns lan_list_results to br0 as wired slaves if present
   template:
-    dest: /etc/systemd/network/IIAB-Slave.network
     src: network/systemd-br0-slave.j2
-  when: iiab_wired_lan_iface is defined and iiab_lan_iface == "br0"
+    dest: /etc/systemd/network/IIAB-Slave-{{ item | trim }}.network
+  with_items:
+    - "{{ lan_list_result.stdout_lines }}"
+  when: iiab_wired_lan_iface is defined and num_lan_interfaces | int >= 1 and not has_netplan
 
 - name: Remove static WAN template
   file:
@@ -33,22 +53,78 @@
     wan_cidr: "{{ CIDR.stdout }}"
   when: wan_ip != "dhcp"
 
-- name: Supply static WAN template
+- name: Supply static WAN template when network_manager_active is False
   template:
     dest: /etc/systemd/network/IIAB-Static.network
     src: network/systemd-static-net.j2
-  when: wan_ip != "dhcp" and not is_ubuntu_18
+  when: wan_ip != "dhcp" and not network_manager_active
+  #when: wan_ip != "dhcp" and ( is_ubuntu_16 or not network_manager_active )
 
-- name: Stopping services
-  include_tasks: down-debian.yml
+- name: Create networkd-dispatcher diagnostic hook for recording network events
+  template:
+    owner: root
+    group: root
+    mode: "0755"
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: 'hostapd/00-iiab-debug', dest: '/etc/networkd-dispatcher/carrier.d/00-iiab-debug' }
+    - { src: 'hostapd/00-iiab-debug', dest: '/etc/networkd-dispatcher/degraded.d/00-iiab-debug' }
+    - { src: 'hostapd/00-iiab-debug', dest: '/etc/networkd-dispatcher/dormant.d/00-iiab-debug' }
+    - { src: 'hostapd/00-iiab-debug', dest: '/etc/networkd-dispatcher/no-carrier.d/00-iiab-debug' }
+    - { src: 'hostapd/00-iiab-debug', dest: '/etc/networkd-dispatcher/off.d/00-iiab-debug' }
+    - { src: 'hostapd/00-iiab-debug', dest: '/etc/networkd-dispatcher/routable.d/00-iiab-debug' }
+  # when: discovered_wireless_iface != "none" or discovered_wired_iface != "none"
+
+- name: Create networkd-dispatcher hook for ap0 on RPi hardware with wifi_up_down True
+  template:
+    owner: root
+    group: root
+    mode: "0755"
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - { src: 'hostapd/netd-disp.j2', dest: '/etc/networkd-dispatcher/carrier.d/iiab-wifi' }
+    - { src: 'hostapd/netd-disp.j2', dest: '/etc/networkd-dispatcher/no-carrier.d/iiab-wifi' }
+    - { src: 'hostapd/netd-disp2.j2', dest: '/etc/networkd-dispatcher/routable.d/iiab-wifi2' }
+  when: discovered_wireless_iface != "none" and rpi_model != "none" and wifi_up_down
+
+- name: Remove networkd-dispatcher hook for ap0 on RPi hardware with wifi_up_down False
+  file:
+    path: "{{ item.dest }}"
+    state: absent
+  with_items:
+    - { dest: '/etc/networkd-dispatcher/carrier.d/iiab-wifi' }
+    - { dest: '/etc/networkd-dispatcher/no-carrier.d/iiab-wifi' }
+    - { dest: '/etc/networkd-dispatcher/routable.d/iiab-wifi' }
+    - { dest: '/etc/networkd-dispatcher/routable.d/iiab-wifi2' }
+  when: discovered_wireless_iface != "none" and rpi_model != "none" and not wifi_up_down
+
+- name: Check if /etc/networkd-dispatcher/routable.d exists
+  stat:
+    path: /etc/networkd-dispatcher/routable.d
+  register: nd_dir
+
+- name: To restart dnsmasq whenever br0 comes up, install /etc/networkd-dispatcher/routable.d/dnsmasq.sh from template (if isn't Appliance, and directory /etc/networkd-dispatcher/routable.d exists, i.e. OS's like Ubuntu 18.04 or later) (root:root by default)
+  template:
+    src: roles/network/templates/network/dnsmasq.sh.j2
+    dest: /etc/networkd-dispatcher/routable.d/dnsmasq.sh
+    mode: "0755"
+  when: nd_dir.stat.exists and nd_dir.stat.isdir and iiab_network_mode != "Appliance"
 
 - name: Reload systemd
   systemd:
     daemon_reload: yes
 
-- name: Restart the systemd-networkd service
+- name: Enable & Restart networkd-dispatcher.service
+  systemd:
+    name: networkd-dispatcher
+    state: restarted
+    enabled: yes
+    masked: no
+  when: not network_manager_active
+
+- name: Enable & Restart systemd-networkd.service
   systemd:
     name: systemd-networkd
-    enabled: yes
     state: restarted
-  when: not nobridge is defined and not no_net_restart

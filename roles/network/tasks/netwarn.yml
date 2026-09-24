@@ -1,0 +1,59 @@
+# 2022-07-22: SIMILAR TO roles/iiab-admin/tasks/pwd-warnings.yml FOR passwords
+#                    AND roles/www_options/tasks/main.yml        FOR browser
+
+# 2022-07-22: An /etc/profile.d/ version like /etc/local/sbin/iiab-netwarn but for
+# shell / ssh logins (across all OS's/distros/window managers) might also make sense?
+
+
+- name: Get username for UID 1000 via shell -- typical graphical desktop login on Raspberry Pi OS
+  command: id -nu 1000
+  register: uid_1000_username
+  ignore_errors: true
+
+# 2024-12-12: RasPiOS changed compositor from wayfire to labwc: https://forums.raspberrypi.com/viewtopic.php?t=379321
+- name: Does directory /home/{{ uid_1000_username.stdout }}/.config/labwc/ exist?
+  stat:
+    path: /home/{{ uid_1000_username.stdout }}/.config/labwc/
+  register: labwc_dir
+  when: uid_1000_username.stdout is defined and uid_1000_username.stdout != ""
+
+- name: If so, install at-spi2-core (GNOME Accessibility, avoids zenity CLI warnings)
+  package:
+    name: at-spi2-core
+  when: labwc_dir.stat.exists and labwc_dir.stat.isdir
+
+- name: ...and add '/usr/local/sbin/iiab-netwarn &' to /home/{{ uid_1000_username.stdout }}/.config/labwc/autostart
+  lineinfile:
+    path: /home/{{ uid_1000_username.stdout }}/.config/labwc/autostart    # iiab-admin
+    create: yes
+    line: '/usr/local/sbin/iiab-netwarn &'
+  when: labwc_dir.stat.exists and labwc_dir.stat.isdir
+
+
+# mate desktop detection based on 'register: nd_dir' in enable_services
+- name: Does /usr/share/mate/autostart/ exist?
+  stat:
+    path: /usr/share/mate/autostart/
+  register: mate_dir
+
+# contents work with mate as of 'switch to using dash via sh'
+# 'text' is up for debate other structural changes I do not recommend JV
+
+- name: 'Install from template: /usr/share/mate/autostart/netwarn-iiab-network.desktop'
+  template:
+    src: roles/network/templates/netwarn/netwarn-iiab-network.desktop    # Invoked by 1-prep (so full path needed)
+    dest: /usr/share/mate/autostart/
+  when: mate_dir.stat.exists and mate_dir.stat.isdir
+
+
+# 2022-07-21: Is autostart pop-up logic for Mint & stock Ubuntu much the same?
+
+# (Let's insert those here if so, and refine the 'when:' line below.)
+
+
+- name: 'If a supported graphical OS is detected, install from template: /usr/local/sbin/iiab-netwarn'
+  template:
+    src: roles/network/templates/netwarn/iiab-netwarn    # Invoked by 1-prep (so full path needed)
+    dest: /usr/local/sbin/
+    mode: "0755"
+  when: (labwc_dir.stat.exists and labwc_dir.stat.isdir) or (mate_dir.stat.exists and mate_dir.stat.isdir)

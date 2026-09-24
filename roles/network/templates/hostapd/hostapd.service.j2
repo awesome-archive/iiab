@@ -1,12 +1,24 @@
 [Unit]
 Description=Hostapd IEEE 802.11 AP, IEEE 802.1X/WPA/WPA2/EAP/RADIUS Authenticator
-Before=network.target
 Wants=network-pre.target
+After=network-pre.target
+# systemd-network would be comming up here
+After=iiab-clone-wifi.service
+Requires=iiab-clone-wifi.service
+Before=dhcpcd.service
+Before=wpa_supplicant@{{ discovered_wireless_iface }}.service
+Before=netplan-wpa-{{ discovered_wireless_iface }}.service
+Before=network.target
+# netplan rendering with NM would bring up br0
+After=NetworkManager.service
 
 [Service]
-Type=idle
+Type=forking
+#Restart=on-failure
+#RestartSec=2
 PIDFile=/run/hostapd.pid
-ExecStart=/usr/sbin/hostapd -P /run/hostapd.pid /etc/hostapd/hostapd.conf
+ExecStart=/usr/sbin/hostapd -B -P /run/hostapd.pid /etc/hostapd/hostapd.conf
+ExecStartPost=-/sbin/ip link set {{ iiab_wireless_lan_iface }} up
 
 [Install]
 WantedBy=multi-user.target

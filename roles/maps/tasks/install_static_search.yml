@@ -1,0 +1,19 @@
+- name: Create static search root directory
+  file:
+    path: "{{ maps_static_search_root }}"
+    state: directory
+
+- name: Install static search js
+  copy:
+    src: static_search.js
+    dest: "{{ maps_static_search_root }}/static_search.js"
+    mode: "0644"
+
+- name: Get static search from catalog
+  include_tasks: download_from_catalog.yml
+  vars:
+    catalog_item: static_search
+    catalog_item_config_var: maps_search_static_db
+    symlink_name: "{{ static_search_symlink_name }}"
+    dest_base_path: "{{ maps_static_search_root }}"
+    expand_archive: true

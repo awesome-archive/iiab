@@ -1,8 +1,0 @@
-- name: "Install textmode remote access packages: screen, lynx"
-  package:
-    name:
-    - screen
-    - lynx
-    state: present
-  tags:
-    - download

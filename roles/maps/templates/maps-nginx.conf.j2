@@ -1,0 +1,33 @@
+location = /maps {
+    return 302 /maps/;
+}
+
+# This gives the browser a directory listing in json format of /maps/ and all subdirectories
+location ^~ /maps/data/ {
+    alias /library/www/maps/;
+    autoindex on;
+    autoindex_format json;
+
+    # Need to disable /maps/data/index.html to see the directory listing, since /maps/index.html exists
+    index does-not-exist-920f18f8cfc29bcbaa0c8430288fa4a919cd2be30a37dc4369b247193aa0d5ab.html;
+}
+
+location ~ ^/maps/ {
+
+    # These seemed to be required to get around a bug in serving pmtiles.
+    # One of these was only required for Firefox.
+    # For partial insight, see: https://github.com/protomaps/PMTiles/issues/584
+    location ~ "\.(pmtiles)$" {
+        chunked_transfer_encoding off;
+        gzip off;
+    }
+
+    # We can gzip each of the json files in the static search "database" and
+    # send them across the wire as-is instead of the usual of storing them
+    # plaintext and gzipping them before sending. This saves disk space.
+    location ~ "^/maps/static-search/" {
+        gzip_static on;
+    }
+
+    root /library/www;
+}

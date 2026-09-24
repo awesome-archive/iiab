@@ -1,3 +1,0 @@
-- name: Install nodogsplash (Raspbian only)
-  include_tasks: rpi.yml
-  when: is_rpi

@@ -20,44 +20,77 @@
     dest: /etc/dhcpcd.conf
     src: network/dhcpcd.conf.j2
 
+- name: Create dhcpcd hook for hostapd and ap0 when wifi_up_down True
+  template:
+    src: hostapd/50-hostapd
+    dest: /lib/dhcpcd/dhcpcd-hooks/50-hostapd
+    owner: root
+    group: root
+    mode: "0644"
+  when: wifi_up_down
+
+- name: Remove dhcpcd hook for hostapd if WiFi is not split using ap0
+  file:
+    path: /lib/dhcpcd/dhcpcd-hooks/50-hostapd
+    state: absent
+  when: not wifi_up_down
+
 - name: New Raspbian requires country code -- check for it
-  shell: grep country /etc/wpa_supplicant/wpa_supplicant.conf
+  shell: grep country /etc/wpa_supplicant/wpa_supplicant.conf | awk -F = '{print $2}'
   register: country_code
   ignore_errors: True
+  when: wifi_up_down and can_be_ap
+
+- name: Set country code for hostapd to value found in /etc/wpa_supplicant/wpa_supplicant.conf
+  set_fact:
+    host_country_code: "{{ country_code.stdout }}"
+  when: country_code.stdout is defined and country_code.stdout | length > 0
 
 - name: Put country code ({{ host_country_code }}) in /etc/wpa_supplicant/wpa_supplicant.conf if nec
-  lineinfile: 
+  lineinfile:
     path: /etc/wpa_supplicant/wpa_supplicant.conf
     regexp: "^country.*"
     line: country={{ host_country_code }}
-  when: country_code is defined and country_code.stdout == ""
+  when: country_code.stdout is defined and country_code.stdout | length == 0
 
-- name: Enable the WiFi with rfkill
-  shell: rfkill unblock 0
-  ignore_errors: True
+# 2024-12-18: SEE 'raspi-config nonint do_wifi_country {{ host_country_code }}' in roles/network/tasks/main.yml
+# # This should go away, should only be unblocked by raspi-config
+# - name: Enable the WiFi with rfkill
+#   shell: rfkill unblock wifi
+#   ignore_errors: True
 
 - name: Copy the bridge script for RPi
   template:
     dest: /etc/network/interfaces.d/iiab
-    src: network/iiab.j2
+    src: network/rpi.j2
+    #src: network/iiab.j2    2019-02-05: caused ./iiab-network to fail repeatedly in recent days on one particular RPi 3, even after reboot ("Unable to start service networking: Job for networking.service failed..." at "Restart the networking service if appropriate") ...leaving dnsmasq off (#1452)
+  when: iiab_wired_lan_iface is defined
+
+- name: Use bind-dynamic for dnsmasq
+  template:
+    dest: /etc/dnsmasq.d/dnsmasq-iiab
+    src: network/dnsmasq-iiab.j2
   when: iiab_lan_iface == "br0"
 
-- name: Stopping services
-  include_tasks: down-debian.yml
+#- name: Stopping services
+#  include_tasks: down-debian.yml
 
 - name: Reload systemd
   systemd:
     daemon_reload: yes
 
-# now pick up denyinterfaces
-- name: Restart dhcpcd
-  service:
-    name: dhcpcd
-    state: restarted
-
 - name: Restart the networking service if appropriate
-  service:
+  systemd:
     name: networking
     enabled: yes
     state: restarted
-  when: not nobridge is defined and not no_net_restart
+  when: iiab_wired_lan_iface is defined
+
+#- name: Stop wpa_supplicant on Raspbian
+#  shell: killall wpa_supplicant
+
+# now pick up denyinterfaces and respawn wpa_supplicant
+- name: Restart dhcpcd on Raspbian
+  systemd:
+    name: dhcpcd
+    state: restarted
